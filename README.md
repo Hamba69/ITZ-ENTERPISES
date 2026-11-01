@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:3000**. Dependencies are already installed in this workspace. `.env.local` contains the supplied Supabase URL and publishable key and is excluded from version control. On another computer, copy `.env.example` to `.env.local` and enter the publishable key.
+Open **http://localhost:3000**. Dependencies are already installed in this workspace. `.env.local` contains the supplied Supabase URL and publishable key and is excluded from version control. On another computer, copy `.env.example` to `.env.local` and enter the Supabase publishable key. Never put a Supabase secret or service-role key in a `NEXT_PUBLIC_` variable.
 
 For a production build:
 
@@ -57,6 +57,34 @@ The app uses project `rmmwkuihqmezwdugttsr`. Its Auth endpoint responded during 
 6. Check Supabase's Security Advisors after applying the SQL. The migration's RLS and grants have been exercised against a local PostgreSQL engine, but that does not establish the hosted project's complete configuration.
 
 The SQL is an initial migration; do not run it twice against an already initialised database. If using the Supabase CLI later, link the correct project and align migration history before applying further migrations.
+
+## Deploy on Vercel
+
+The repository is configured for Vercel's standard Next.js build; no custom output mode or deployment command is needed. Import the Git repository as a Next.js project and keep the defaults:
+
+- Framework preset: **Next.js**
+- Build command: `npm run build`
+- Install command: `npm install` (uses the committed `package-lock.json`)
+- Node.js: **24.x** (the version used for verification)
+
+Add these environment variables to the Vercel project's **Development**, **Preview** and **Production** environments as appropriate:
+
+| Variable | Value |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | The Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | The project's publishable key (legacy `anon` key is also supported) |
+
+These are public client configuration values, not secrets. Do not configure a service-role key for this application or commit `.env.local`. `NEXT_PUBLIC_` values are included in the browser bundle, so they must never contain a private key.
+
+Before relying on cloud accounts in the deployed app:
+
+1. Apply the migration and complete the Supabase Auth setup in [Finish the Supabase setup](#finish-the-supabase-setup). No remote migration has been applied yet.
+2. Set Supabase Auth **Site URL** to the production HTTPS origin.
+3. Add `https://your-production-domain/auth/callback` and `https://your-production-domain/auth/callback?recovery=1` to Supabase's allowed redirect URLs. Add the exact Vercel preview callback URLs you intend to use as well.
+4. Set the two Vercel environment variables for the target environment and redeploy after changing them.
+5. Verify signup/confirmation, sign-in, password recovery, save/reload and workspace isolation using two separate test accounts before inviting real users.
+
+Local mode does not require the database migration, but the deployed cloud sign-in and persistence do. The Vercel deployment itself does not apply Supabase migrations.
 
 ## Data design and boundaries
 
