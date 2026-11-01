@@ -328,10 +328,28 @@ export function emptyWorkspace(): Workspace {
   };
 }
 export function nextNumber(w: Workspace, kind: Invoice['kind']) {
-  const prefix = (kind === 'invoice' ? 'INV' : 'QUO') + '-' + today().slice(0, 4) + '-';
-  let n = 1;
-  while (w.documents.some((d) => d.number === prefix + String(n).padStart(3, '0'))) n++;
-  return prefix + String(n).padStart(3, '0');
+  const documentPrefix = kind === 'invoice' ? 'I-ITZ' : 'Q-ITZ';
+  const year = today().slice(0, 4);
+  const prefix = `${documentPrefix}-${year}-`;
+  let highestSequence = 0n;
+  for (const document of w.documents) {
+    const number = document.number.toUpperCase();
+    if (!number.startsWith(prefix)) continue;
+    const sequence = number.slice(prefix.length);
+    if (/^\d+$/.test(sequence)) {
+      const value = BigInt(sequence);
+      if (value > highestSequence) highestSequence = value;
+    }
+  }
+  let nextSequence = highestSequence + 1n;
+  let candidate = `${prefix}${nextSequence.toString().padStart(3, '0')}`;
+  while (
+    w.documents.some((document) => document.number.toLowerCase() === candidate.toLowerCase())
+  ) {
+    nextSequence++;
+    candidate = `${prefix}${nextSequence.toString().padStart(3, '0')}`;
+  }
+  return candidate;
 }
 export function newDocument(w: Workspace, kind: Invoice['kind'] = 'invoice'): Invoice {
   return {

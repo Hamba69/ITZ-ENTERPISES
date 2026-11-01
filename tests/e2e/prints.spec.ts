@@ -14,7 +14,7 @@ for (const template of templates) {
     );
     await page.goto('/');
     await page.getByRole('button', { name: /^Invoices/ }).click();
-    await page.getByRole('button', { name: /^INV-.*001$/ }).click();
+    await page.getByRole('button', { name: /^I-ITZ-.*001$/ }).click();
     await expect(page.locator('dialog .document')).toHaveClass(
       new RegExp('template-' + template.id),
     );

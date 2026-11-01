@@ -39,7 +39,7 @@ export function DocumentView({ doc }: { doc: Invoice }) {
       </div>
       <header className="document-header">
         <div>
-          <Brand />
+          <Brand showStudioLabel={false} />
           <h2>{doc.company.name}</h2>
           <p className="preserve">{doc.company.address}</p>
           <p>

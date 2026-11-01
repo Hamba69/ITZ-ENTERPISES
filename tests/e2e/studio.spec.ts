@@ -30,13 +30,15 @@ test('invoice lifecycle, exact totals, measurement schedule, PDF, persistence an
   await page.getByRole('button', { name: 'Save draft', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Good work. Clear numbers.' })).toBeVisible();
   await page.reload();
-  await page.getByRole('button', { name: /^INV-\d{4}-001$/, exact: true }).click();
+  await page.getByRole('button', { name: /^I-ITZ-\d{4}-001$/, exact: true }).click();
   await expect(page.locator('dialog .document')).toContainText('Steel window fabrication');
+  await expect(page.locator('dialog .document-header .brand')).not.toContainText('BUSINESS STUDIO');
+  await expect(page.locator('.sidebar .brand')).toContainText('BUSINESS STUDIO');
   await expect(page.locator('dialog .document')).toContainText('W01');
   await expect(page.locator('dialog .document')).toHaveClass(/template-forge font-serif/);
   await page.getByRole('button', { name: 'Edit draft' }).click();
   await page.getByRole('button', { name: 'Issue invoice', exact: true }).click();
-  await page.getByRole('button', { name: /^INV-\d{4}-001$/, exact: true }).click();
+  await page.getByRole('button', { name: /^I-ITZ-\d{4}-001$/, exact: true }).click();
   await page.getByRole('button', { name: 'Record payment' }).click();
   await page.getByLabel('Amount (UGX)').fill('200000');
   await page.getByRole('button', { name: 'Save payment', exact: true }).click();
@@ -78,6 +80,20 @@ test('collapsible sidebar and tabular item entry keep quotation totals in sync',
   await expect(page.locator('.preview-scale')).toContainText('Item total');
   await expect(page.locator('.preview-scale')).toContainText('Quotation');
   await expect(page.locator('.preview-scale')).toContainText('5,500');
+});
+
+test('system numbering is fixed and locked for new documents', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Create invoice', exact: true }).click();
+  const invoiceNumber = page.getByLabel('Document number');
+  await expect(invoiceNumber).toHaveValue(`I-ITZ-${new Date().getFullYear()}-001`);
+  await expect(invoiceNumber).toHaveAttribute('readonly', '');
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('button', { name: 'New quotation', exact: true }).click();
+  await expect(page.getByLabel('Document number')).toHaveValue(
+    `Q-ITZ-${new Date().getFullYear()}-001`,
+  );
+  await expect(page.getByLabel('Document number')).toHaveAttribute('readonly', '');
 });
 
 test('clients, catalogue, expenses and separate sample data', async ({ page }) => {
@@ -167,11 +183,11 @@ test('quotation conversion, full payment and backup rejection', async ({ page })
   );
   await page.goto('/');
   await page.getByRole('button', { name: 'Quotations', exact: true }).click();
-  await page.getByRole('button', { name: /^QUO-/ }).click();
+  await page.getByRole('button', { name: /^Q-ITZ-/ }).click();
   await page.getByRole('button', { name: 'Convert to invoice' }).click();
   await page.getByRole('button', { name: 'Issue invoice', exact: true }).click();
   await page.getByRole('button', { name: /^Invoices/ }).click();
-  await page.getByRole('button', { name: /^INV-.*006$/ }).click();
+  await page.getByRole('button', { name: /^I-ITZ-.*006$/ }).click();
   await page.getByRole('button', { name: 'Record payment' }).click();
   await page.getByRole('button', { name: 'Save payment', exact: true }).click();
   await expect(page.locator('.document-actions .badge')).toHaveText('paid');
@@ -218,7 +234,7 @@ test('long invoices export all rows with multiple measurement schedules', async 
   );
   await page.goto('/');
   await page.getByRole('button', { name: /^Invoices/ }).click();
-  await page.getByRole('button', { name: /^INV-.*001$/ }).click();
+  await page.getByRole('button', { name: /^I-ITZ-.*001$/ }).click();
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download PDF' }).click();
   await (await download).saveAs('test-results/long-invoice.pdf');

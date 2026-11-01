@@ -23,6 +23,7 @@ npm start
 ## What you can do
 
 - Create, edit and save draft invoices and quotations; issue documents, duplicate them, convert quotations to invoices, and void unpaid issued documents.
+- Assign audit-friendly document numbers automatically: invoices use `I-ITZ-YYYY-NNN`, quotations use `Q-ITZ-YYYY-NNN`. The year and sequence are system-controlled, sequence numbers advance past the highest existing number for that type and year, and existing document numbers are preserved.
 - Add real itemised rows with description, specification, quantity, unit, unit price and calculated amount. Reorder rows or reuse saved catalogue items.
 - Apply a percentage discount before tax. Set the applicable tax rate explicitly; the default is zero.
 - Use UGX, KES, USD, EUR, GBP, JPY or INR. Monetary amounts are rounded in each currency; currencies are never silently converted or summed together.
@@ -69,9 +70,9 @@ The repository is configured for Vercel's standard Next.js build; no custom outp
 
 Add these environment variables to the Vercel project's **Development**, **Preview** and **Production** environments as appropriate:
 
-| Variable | Value |
-| --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | The Supabase project URL |
+| Variable                               | Value                                                               |
+| -------------------------------------- | ------------------------------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`             | The Supabase project URL                                            |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | The project's publishable key (legacy `anon` key is also supported) |
 
 These are public client configuration values, not secrets. Do not configure a service-role key for this application or commit `.env.local`. `NEXT_PUBLIC_` values are included in the browser bundle, so they must never contain a private key.

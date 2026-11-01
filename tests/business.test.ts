@@ -85,6 +85,34 @@ test('sample workspace validates and duplicate numbers or IDs are rejected', () 
   );
   assert.notEqual(nextNumber(w, 'invoice'), w.documents[0].number);
 });
+test('fixed document numbers are sequential and do not reuse gaps', () => {
+  const w = emptyWorkspace();
+  assert.equal(nextNumber(w, 'invoice'), `I-ITZ-${today().slice(0, 4)}-001`);
+  assert.equal(nextNumber(w, 'quotation'), `Q-ITZ-${today().slice(0, 4)}-001`);
+  const firstInvoice = newDocument(w);
+  firstInvoice.number = `I-ITZ-${today().slice(0, 4)}-001`;
+  const thirdInvoice = newDocument(w);
+  thirdInvoice.number = `I-ITZ-${today().slice(0, 4)}-003`;
+  const secondQuote = newDocument(w, 'quotation');
+  secondQuote.number = `Q-ITZ-${today().slice(0, 4)}-002`;
+  w.documents.push(firstInvoice, thirdInvoice, secondQuote);
+  assert.equal(nextNumber(w, 'invoice'), `I-ITZ-${today().slice(0, 4)}-004`);
+  assert.equal(nextNumber(w, 'quotation'), `Q-ITZ-${today().slice(0, 4)}-003`);
+
+  const legacyBase = demoWorkspace();
+  const workspaceWithOldSettings = {
+    ...legacyBase,
+    company: {
+      ...legacyBase.company,
+      invoicePrefix: 'CUSTOM',
+      quotationPrefix: 'CUSTOM-Q',
+    },
+  };
+  const parsed = workspaceSchema.safeParse(workspaceWithOldSettings);
+  assert.equal(parsed.success, true);
+  if (parsed.success) assert.equal('invoicePrefix' in parsed.data.company, false);
+  assert.equal(legacyBase.documents[0].number.startsWith('I-ITZ-'), true);
+});
 test('measurement schedules are rectangular and bounded', () => {
   const d = demoWorkspace().documents[0];
   assert.equal(

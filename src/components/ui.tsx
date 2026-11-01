@@ -1,7 +1,13 @@
 'use client';
 import { useEffect, useRef, useId, type ReactNode } from 'react';
 import { X, ArrowUpRight, FileText } from 'lucide-react';
-export function Brand({ compact = false }: { compact?: boolean }) {
+export function Brand({
+  compact = false,
+  showStudioLabel = true,
+}: {
+  compact?: boolean;
+  showStudioLabel?: boolean;
+}) {
   return (
     <div className="brand">
       <div className="brand-mark">
@@ -11,7 +17,7 @@ export function Brand({ compact = false }: { compact?: boolean }) {
       {!compact && (
         <div>
           <strong>ENGINEERING</strong>
-          <small>BUSINESS STUDIO</small>
+          {showStudioLabel && <small>BUSINESS STUDIO</small>}
         </div>
       )}
     </div>

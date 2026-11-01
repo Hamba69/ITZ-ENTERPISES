@@ -150,8 +150,11 @@ export function DocumentEditor({
                   01 <h3>Document details</h3>
                 </div>
                 <div className="form-grid">
-                  <Field label="Document number">
-                    <input value={doc.number} onChange={(e) => patch({ number: e.target.value })} />
+                  <Field
+                    label="Document number"
+                    hint="System-assigned and locked to preserve numbering history."
+                  >
+                    <input value={doc.number} readOnly />
                   </Field>
                   <Field label="Currency">
                     <select
