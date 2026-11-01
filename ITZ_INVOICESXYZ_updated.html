@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ITZ ENGINEERING - Invoice Generator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Work+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --primary: #0a4d8c; --secondary: #f57c00; --accent: #00e676;
+            --dark: #1a1a2e; --light: #f5f5f5;
+        }
+        body {
+            font-family: 'Work Sans', sans-serif;
+            background: linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 50%, #0f0f1e 100%);
+            color: #fff; min-height: 100vh; overflow-x: hidden;
+        }
+        .app-container { max-width: 1600px; margin: 0 auto; padding: 20px; }
+        .header { text-align: center; padding: 40px 20px; position: relative; overflow: hidden; }
+        .header::before {
+            content: ''; position: absolute; top: 0; left: -50%; width: 200%; height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            animation: scan 3s infinite;
+        }
+        @keyframes scan { 0%,100%{transform:translateX(-50%)}50%{transform:translateX(50%)} }
+        .header h1 {
+            font-family: 'Orbitron', sans-serif; font-size: clamp(2rem,5vw,3.5rem); font-weight: 900;
+            letter-spacing: 4px; background: linear-gradient(135deg,#00e676,#00bcd4,#f57c00);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+            margin-bottom: 10px; text-transform: uppercase;
+        }
+        .header p { font-size: 1.1rem; color: #aaa; letter-spacing: 2px; text-transform: uppercase; }
+        .main-grid { display: grid; grid-template-columns: 420px 1fr; gap: 30px; margin-top: 40px; }
+        @media(max-width:1200px){ .main-grid{grid-template-columns:1fr} }
+        .editor-panel {
+            background: rgba(26,26,46,0.8); backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 30px;
+            height: fit-content; position: sticky; top: 20px; max-height: 95vh; overflow-y: auto;
+        }
+        .editor-panel::-webkit-scrollbar { width: 4px; }
+        .editor-panel::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 2px; }
+        .panel-section { margin-bottom: 30px; }
+        .section-title {
+            font-family: 'Orbitron', sans-serif; font-size: 0.9rem; font-weight: 700;
+            color: var(--accent); text-transform: uppercase; letter-spacing: 2px;
+            margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid rgba(0,230,118,0.3);
+            display: flex; align-items: center; gap: 10px;
+        }
+        .section-title::before { content:''; width:4px; height:20px; background:var(--accent); display:block; }
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display:block; font-size:0.85rem; color:#aaa; margin-bottom:5px; text-transform:uppercase; letter-spacing:1px; font-weight:500; }
+        .input-group input, .input-group textarea, .input-group select {
+            width:100%; padding:12px 15px; background:rgba(255,255,255,0.05);
+            border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#fff;
+            font-family:'Work Sans',sans-serif; font-size:0.95rem; transition:all 0.3s;
+        }
+        .input-group input:focus,.input-group textarea:focus,.input-group select:focus {
+            outline:none; border-color:var(--accent); background:rgba(255,255,255,0.08);
+            box-shadow:0 0 0 3px rgba(0,230,118,0.1);
+        }
+        .input-group textarea { resize:vertical; min-height:80px; }
+        .template-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+        .template-option {
+            padding:20px; background:rgba(255,255,255,0.05); border:2px solid rgba(255,255,255,0.1);
+            border-radius:8px; cursor:pointer; transition:all 0.3s; text-align:center; position:relative; overflow:hidden;
+        }
+        .template-option:hover { border-color:var(--accent); transform:translateY(-2px); }
+        .template-option.active { border-color:var(--accent); background:rgba(0,230,118,0.1); }
+        .template-name { font-family:'Orbitron',sans-serif; font-size:0.85rem; font-weight:600; color:#fff; text-transform:uppercase; letter-spacing:1px; }
+        .items-table { width:100%; margin-top:15px; }
+        .items-table input {
+            width:100%; padding:8px; background:rgba(255,255,255,0.05);
+            border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:#fff; font-size:0.9rem;
+        }
+        .item-row { display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 40px; gap:10px; margin-bottom:10px; align-items:center; }
+        .btn {
+            padding:12px 24px; border:none; border-radius:6px; font-family:'Orbitron',sans-serif;
+            font-size:0.9rem; font-weight:600; text-transform:uppercase; letter-spacing:1px;
+            cursor:pointer; transition:all 0.3s; position:relative; overflow:hidden;
+        }
+        .btn::before {
+            content:''; position:absolute; top:50%; left:50%; width:0; height:0;
+            background:rgba(255,255,255,0.2); border-radius:50%; transform:translate(-50%,-50%);
+            transition:width 0.6s,height 0.6s;
+        }
+        .btn:hover::before { width:300px; height:300px; }
+        .btn-primary { background:linear-gradient(135deg,var(--accent),#00bcd4); color:#000; }
+        .btn-secondary { background:rgba(255,255,255,0.1); color:#fff; border:1px solid rgba(255,255,255,0.2); }
+        .btn-danger { background:rgba(255,59,48,0.2); color:#ff3b30; border:1px solid rgba(255,59,48,0.3); padding:8px 12px; font-size:0.8rem; }
+        .btn-warn { background:rgba(245,124,0,0.2); color:#f57c00; border:1px solid rgba(245,124,0,0.3); padding:6px 10px; font-size:0.75rem; }
+        .btn-add { width:100%; margin-top:10px; }
+        .action-buttons { display:flex; gap:15px; margin-top:30px; }
+        .action-buttons .btn { flex:1; }
+        .preview-panel { background:#fff; border-radius:12px; padding:0; box-shadow:0 20px 60px rgba(0,0,0,0.5); overflow:hidden; }
+        .invoice-preview { min-height:1000px; background:#fff; }
+
+        /* ===== MEASUREMENT TABLE EDITOR ===== */
+        .meas-table-block {
+            background: rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.12);
+            border-radius:8px; padding:16px; margin-bottom:16px; position:relative;
+        }
+        .meas-table-block-header { display:flex; gap:8px; align-items:center; margin-bottom:12px; }
+        .meas-table-block-header input {
+            flex:1; padding:8px 12px; background:rgba(0,230,118,0.08);
+            border:1px solid rgba(0,230,118,0.3); border-radius:5px; color:#00e676;
+            font-family:'Orbitron',sans-serif; font-size:0.85rem; font-weight:700; letter-spacing:1px;
+        }
+        .meas-table-block-header input:focus {
+            outline:none; border-color:var(--accent); box-shadow:0 0 0 2px rgba(0,230,118,0.15);
+        }
+        .meas-cols-row {
+            display:flex; gap:6px; align-items:center; margin-bottom:8px; flex-wrap:nowrap; overflow-x:auto;
+        }
+        .meas-col-input {
+            min-width:70px; padding:5px 8px; background:rgba(255,255,255,0.08);
+            border:1px solid rgba(255,255,255,0.15); border-radius:4px; color:#aaa;
+            font-size:0.78rem; text-align:center; font-weight:600; text-transform:uppercase;
+        }
+        .meas-col-input:focus { outline:none; border-color:#f57c00; color:#fff; }
+        .meas-col-add-btn {
+            padding:5px 10px; background:rgba(245,124,0,0.15); border:1px solid rgba(245,124,0,0.3);
+            border-radius:4px; color:#f57c00; cursor:pointer; font-size:0.8rem; white-space:nowrap; flex-shrink:0;
+        }
+        .meas-col-add-btn:hover { background:rgba(245,124,0,0.25); }
+        .meas-row-line {
+            display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:nowrap; overflow-x:auto;
+        }
+        .meas-row-line input {
+            min-width:70px; padding:5px 8px; background:rgba(255,255,255,0.05);
+            border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:#fff; font-size:0.82rem;
+        }
+        .meas-row-line input:focus { outline:none; border-color:var(--accent); }
+        .meas-row-del { padding:4px 8px; background:rgba(255,59,48,0.15); border:1px solid rgba(255,59,48,0.25); border-radius:4px; color:#ff3b30; cursor:pointer; font-size:0.75rem; flex-shrink:0; }
+        .meas-row-del:hover { background:rgba(255,59,48,0.3); }
+        .meas-col-del { padding:3px 6px; background:rgba(255,59,48,0.1); border:1px solid rgba(255,59,48,0.2); border-radius:3px; color:#ff3b30; cursor:pointer; font-size:0.7rem; flex-shrink:0; }
+        .meas-add-row-btn {
+            width:100%; padding:6px; background:rgba(0,230,118,0.08); border:1px dashed rgba(0,230,118,0.3);
+            border-radius:4px; color:#00e676; cursor:pointer; font-size:0.8rem; text-align:center; margin-top:4px;
+        }
+        .meas-add-row-btn:hover { background:rgba(0,230,118,0.15); }
+        .meas-table-footer { display:flex; justify-content:space-between; margin-top:10px; gap:8px; }
+        .meas-section-label { font-size:0.72rem; color:#555; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px; }
+        .add-meas-table-btn {
+            width:100%; padding:14px; margin-top:4px;
+            background:rgba(0,230,118,0.08); border:2px dashed rgba(0,230,118,0.4);
+            border-radius:8px; color:#00e676; cursor:pointer; font-family:'Orbitron',sans-serif;
+            font-size:0.85rem; letter-spacing:1px; text-align:center; transition:all 0.2s;
+        }
+        .add-meas-table-btn:hover { background:rgba(0,230,118,0.18); border-color:var(--accent); }
+        .tab-switcher { display:flex; gap:0; margin-bottom:20px; border:1px solid rgba(255,255,255,0.1); border-radius:8px; overflow:hidden; }
+        .tab-btn { flex:1; padding:10px; background:rgba(255,255,255,0.03); border:none; color:#aaa; cursor:pointer; font-family:'Orbitron',sans-serif; font-size:0.78rem; letter-spacing:1px; transition:all 0.2s; }
+        .tab-btn.active { background:rgba(0,230,118,0.15); color:var(--accent); }
+        .tab-btn:hover:not(.active) { background:rgba(255,255,255,0.07); }
+        .tab-content { display:none; }
+        .tab-content.active { display:block; }
+
+        /* ===== INVOICE TEMPLATES ===== */
+        .invoice { padding:60px; color:#000; font-family:'Work Sans',sans-serif; }
+        .invoice-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:40px; padding-bottom:20px; }
+        .company-info h2 { font-family:'Orbitron',sans-serif; font-size:2rem; font-weight:900; margin-bottom:10px; }
+        .invoice-details { text-align:right; }
+        .invoice-title { font-family:'Orbitron',sans-serif; font-size:2.5rem; font-weight:900; margin-bottom:10px; }
+        .invoice-meta { font-size:0.9rem; color:#666; }
+        .invoice-parties { display:grid; grid-template-columns:1fr 1fr; gap:40px; margin-bottom:40px; }
+        .party-box h3 { font-family:'Orbitron',sans-serif; font-size:0.9rem; font-weight:700; text-transform:uppercase; letter-spacing:2px; margin-bottom:10px; }
+        .party-box p { margin:5px 0; color:#444; line-height:1.6; }
+        .invoice-table { width:100%; border-collapse:collapse; margin-bottom:30px; }
+        .invoice-table th { font-family:'Orbitron',sans-serif; font-size:0.85rem; font-weight:700; text-transform:uppercase; letter-spacing:1px; padding:15px; text-align:left; }
+        .invoice-table td { padding:12px 15px; border-bottom:1px solid #eee; }
+        .invoice-table tr:last-child td { border-bottom:none; }
+        .text-right { text-align:right; }
+        .totals-section { margin-left:auto; width:350px; margin-top:30px; }
+        .total-row { display:flex; justify-content:space-between; padding:10px 0; font-size:0.95rem; }
+        .total-row.grand-total { font-family:'Orbitron',sans-serif; font-size:1.3rem; font-weight:700; padding-top:15px; margin-top:15px; }
+        .invoice-footer { margin-top:50px; padding-top:30px; }
+        .notes-section h4 { font-family:'Orbitron',sans-serif; font-size:0.9rem; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; }
+        .notes-section p { color:#666; line-height:1.6; }
+
+        /* Measurement tables in invoice preview */
+        .meas-section { margin-top:40px; }
+        .meas-section-header {
+            font-family:'Orbitron',sans-serif; font-size:1rem; font-weight:800; text-transform:uppercase;
+            letter-spacing:2px; padding:10px 16px; margin-bottom:2px; border-radius:4px 4px 0 0;
+        }
+        .meas-data-table { width:100%; border-collapse:collapse; margin-bottom:24px; }
+        .meas-data-table th { padding:10px 14px; font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:1px; text-align:left; }
+        .meas-data-table td { padding:9px 14px; font-size:0.88rem; border-bottom:1px solid rgba(0,0,0,0.07); }
+        .meas-data-table tr:last-child td { border-bottom:none; }
+        .meas-data-table td:first-child { font-weight:600; }
+
+        /* Template 1: Industrial Blue */
+        .template-1 .invoice-header { border-bottom:4px solid #0a4d8c; }
+        .template-1 .company-info h2 { color:#0a4d8c; }
+        .template-1 .invoice-title { color:#0a4d8c; }
+        .template-1 .party-box h3 { color:#0a4d8c; border-left:4px solid #0a4d8c; padding-left:10px; }
+        .template-1 .invoice-table th { background:#0a4d8c; color:#fff; }
+        .template-1 .total-row.grand-total { background:#0a4d8c; color:#fff; padding:15px; margin-top:0; }
+        .template-1 .meas-section-header { background:#0a4d8c; color:#fff; }
+        .template-1 .meas-data-table th { background:#d9e8f7; color:#0a4d8c; }
+        .template-1 .meas-data-table tr:nth-child(even) td { background:#f0f6fd; }
+
+        /* Template 2: Safety Orange */
+        .template-2 .invoice-header { background:linear-gradient(135deg,#f57c00,#ff9800); color:#fff; padding:30px; margin:-60px -60px 40px -60px; }
+        .template-2 .company-info h2,.template-2 .invoice-title,.template-2 .invoice-meta { color:#fff; }
+        .template-2 .party-box h3 { color:#f57c00; background:rgba(245,124,0,0.1); padding:10px 15px; }
+        .template-2 .invoice-table th { background:#f57c00; color:#fff; }
+        .template-2 .total-row.grand-total { background:#f57c00; color:#fff; padding:15px; }
+        .template-2 .meas-section-header { background:#f57c00; color:#fff; }
+        .template-2 .meas-data-table th { background:#fff3e0; color:#e65100; }
+        .template-2 .meas-data-table tr:nth-child(even) td { background:#fff8f0; }
+
+        /* Template 3: Tech Green */
+        .template-3 { background:#000; color:#0f0; }
+        .template-3 .invoice-header { border-bottom:2px solid #0f0; border-top:2px solid #0f0; padding:20px 0; }
+        .template-3 .company-info h2,.template-3 .invoice-title { color:#0f0; text-shadow:0 0 10px rgba(0,255,0,0.5); }
+        .template-3 .party-box h3 { color:#0f0; font-family:'Courier New',monospace; }
+        .template-3 .party-box p,.template-3 .invoice-meta,.template-3 .notes-section p { color:#0f0; font-family:'Courier New',monospace; }
+        .template-3 .invoice-table th { background:transparent; color:#0f0; border:1px solid #0f0; font-family:'Courier New',monospace; }
+        .template-3 .invoice-table td { color:#0f0; border:1px solid #0f0; font-family:'Courier New',monospace; }
+        .template-3 .total-row { color:#0f0; font-family:'Courier New',monospace; }
+        .template-3 .total-row.grand-total { background:#0f0; color:#000; border:2px solid #0f0; }
+        .template-3 .meas-section-header { background:transparent; color:#0f0; border:1px solid #0f0; font-family:'Courier New',monospace; }
+        .template-3 .meas-data-table th { background:transparent; color:#0f0; border:1px solid #0f0; font-family:'Courier New',monospace; }
+        .template-3 .meas-data-table td { color:#0f0; border:1px solid #0f0; font-family:'Courier New',monospace; }
+
+        /* Template 4: Minimal Gray */
+        .template-4 .invoice-header { border-bottom:1px solid #e0e0e0; }
+        .template-4 .company-info h2 { color:#333; }
+        .template-4 .invoice-title { color:#666; font-weight:300; font-size:2rem; }
+        .template-4 .party-box h3 { color:#888; font-weight:400; font-size:0.75rem; }
+        .template-4 .invoice-table th { background:#f5f5f5; color:#666; font-weight:400; }
+        .template-4 .total-row.grand-total { border-top:2px solid #333; color:#333; }
+        .template-4 .meas-section-header { background:#f5f5f5; color:#444; border-left:3px solid #ccc; }
+        .template-4 .meas-data-table th { background:#fafafa; color:#666; border-bottom:1px solid #ddd; }
+        .template-4 .meas-data-table td { color:#444; }
+
+        /* Template 5: Gradient Pro */
+        .template-5 .invoice-header { background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:#fff; padding:40px; margin:-60px -60px 40px -60px; border-radius:12px 12px 0 0; }
+        .template-5 .company-info h2,.template-5 .invoice-title,.template-5 .invoice-meta { color:#fff; }
+        .template-5 .party-box { background:rgba(102,126,234,0.05); padding:20px; border-radius:8px; border-left:4px solid #667eea; }
+        .template-5 .party-box h3 { color:#667eea; }
+        .template-5 .invoice-table th { background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:#fff; }
+        .template-5 .total-row.grand-total { background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:#fff; padding:15px; border-radius:8px; }
+        .template-5 .meas-section-header { background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:#fff; }
+        .template-5 .meas-data-table th { background:rgba(102,126,234,0.1); color:#667eea; }
+        .template-5 .meas-data-table tr:nth-child(even) td { background:rgba(102,126,234,0.04); }
+
+        .loading { text-align:center; padding:20px; color:var(--accent); font-family:'Orbitron',sans-serif; }
+        .meas-group-label { font-size:0.7rem; color:#777; margin:2px 0 6px; font-style:italic; }
+        .cols-hint { font-size:0.72rem; color:#555; margin-bottom:6px; }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <div class="header">
+        <h1>ITZ ENGINEERING</h1>
+        <p>Professional Invoice Generator</p>
+    </div>
+
+    <div class="main-grid">
+        <!-- EDITOR PANEL -->
+        <div class="editor-panel">
+            <!-- Tabs -->
+            <div class="tab-switcher">
+                <button class="tab-btn active" onclick="switchTab('invoice')">Invoice</button>
+                <button class="tab-btn" onclick="switchTab('measurements')">Measurements</button>
+                <button class="tab-btn" onclick="switchTab('appearance')">Appearance</button>
+            </div>
+
+            <!-- TAB: Invoice -->
+            <div id="tab-invoice" class="tab-content active">
+                <div class="panel-section">
+                    <div class="section-title">Invoice Details</div>
+                    <div class="input-group"><label>Invoice Number</label><input type="text" id="invoiceNumber" value="INV-2024-001" oninput="updateInvoice()"></div>
+                    <div class="input-group"><label>Date</label><input type="date" id="invoiceDate" oninput="updateInvoice()"></div>
+                    <div class="input-group"><label>Due Date</label><input type="date" id="dueDate" oninput="updateInvoice()"></div>
+                    <div class="input-group"><label>Currency</label>
+                        <select id="currency" onchange="updateInvoice()">
+                            <option value="UGX" selected>UGX</option>
+                            <option value="$">USD ($)</option>
+                            <option value="€">EUR (€)</option>
+                            <option value="£">GBP (£)</option>
+                            <option value="¥">JPY (¥)</option>
+                            <option value="₹">INR (₹)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="panel-section">
+                    <div class="section-title">Company Information</div>
+                    <div class="input-group"><label>Company Name</label><input type="text" id="companyName" value="I.T.Z METAL WORKS LTD" oninput="updateInvoice()"></div>
+                    <div class="input-group"><label>Address</label><textarea id="companyAddress" oninput="updateInvoice()">Bwaise, Opposite Total Ltd</textarea></div>
+                    <div class="input-group"><label>Email</label><input type="email" id="companyEmail" value="mulumbakacm@gmail.com" oninput="updateInvoice()"></div>
+                    <div class="input-group"><label>Phone</label><input type="tel" id="companyPhone" value="0704758195" oninput="updateInvoice()"></div>
+                </div>
+                <div class="panel-section">
+                    <div class="section-title">Client Information</div>
+                    <div class="input-group"><label>Client Name</label><input type="text" id="clientName" value="Acme Corporation" oninput="updateInvoice()"></div>
+                    <div class="input-group"><label>Client Address</label><textarea id="clientAddress" oninput="updateInvoice()">456 Business Blvd
+Commerce City, CC 67890</textarea></div>
+                </div>
+                <div class="panel-section">
+                    <div class="section-title">Line Items</div>
+                    <div id="itemsContainer"></div>
+                    <button class="btn btn-secondary btn-add" onclick="addItem()">+ Add Item</button>
+                </div>
+                <div class="panel-section">
+                    <div class="section-title">Additional Options</div>
+                    <div class="input-group"><label>Tax Rate (%)</label><input type="number" id="taxRate" value="10" step="0.01" oninput="updateInvoice()"></div>
+                    <div class="input-group"><label>Discount (%)</label><input type="number" id="discount" value="0" step="0.01" oninput="updateInvoice()"></div>
+                    <div class="input-group"><label>Payment Terms</label><textarea id="paymentTerms" oninput="updateInvoice()">Payment due within 30 days. Late payments subject to 1.5% monthly interest.</textarea></div>
+                    <div class="input-group"><label>Notes</label><textarea id="notes" oninput="updateInvoice()">Thank you for your business!</textarea></div>
+                </div>
+                <div class="action-buttons">
+                    <button class="btn btn-primary" onclick="downloadPDF()">📄 Export PDF</button>
+                    <button class="btn btn-secondary" onclick="printInvoice()">🖨️ Print</button>
+                </div>
+            </div>
+
+            <!-- TAB: Measurements -->
+            <div id="tab-measurements" class="tab-content">
+                <p style="font-size:0.82rem;color:#888;margin-bottom:16px;line-height:1.5;">
+                    Add measurement tables (windows, doors, rails, etc.) that appear below the invoice items. Each table has a title, custom columns, and rows.
+                </p>
+                <div id="measTablesContainer"></div>
+                <button class="add-meas-table-btn" onclick="addMeasTable()">＋ Add Measurement Table</button>
+                <div class="action-buttons" style="margin-top:20px;">
+                    <button class="btn btn-primary" onclick="downloadPDF()">📄 Export PDF</button>
+                    <button class="btn btn-secondary" onclick="printInvoice()">🖨️ Print</button>
+                </div>
+            </div>
+
+            <!-- TAB: Appearance -->
+            <div id="tab-appearance" class="tab-content">
+                <div class="panel-section">
+                    <div class="section-title">Template</div>
+                    <div class="template-grid">
+                        <div class="template-option active" onclick="selectTemplate(1)"><div class="template-name">Industrial</div></div>
+                        <div class="template-option" onclick="selectTemplate(2)"><div class="template-name">Safety</div></div>
+                        <div class="template-option" onclick="selectTemplate(3)"><div class="template-name">Tech Matrix</div></div>
+                        <div class="template-option" onclick="selectTemplate(4)"><div class="template-name">Minimal</div></div>
+                        <div class="template-option" onclick="selectTemplate(5)"><div class="template-name">Gradient Pro</div></div>
+                    </div>
+                </div>
+                <div class="panel-section">
+                    <div class="section-title">Document Title</div>
+                    <div class="input-group">
+                        <label>Override "INVOICE" label</label>
+                        <input type="text" id="docTitle" value="INVOICE" placeholder="e.g. QUOTATION, RECEIPT" oninput="updateInvoice()">
+                    </div>
+                    <div class="input-group">
+                        <label>Show Measurement Tables</label>
+                        <select id="showMeas" onchange="updateInvoice()">
+                            <option value="after">After Line Items</option>
+                            <option value="before">Before Line Items</option>
+                            <option value="none">Hidden</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="action-buttons">
+                    <button class="btn btn-primary" onclick="downloadPDF()">📄 Export PDF</button>
+                    <button class="btn btn-secondary" onclick="printInvoice()">🖨️ Print</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- PREVIEW PANEL -->
+        <div class="preview-panel">
+            <div id="invoicePreview" class="invoice-preview"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentTemplate = 1;
+    let items = [
+        { item: '80×40×2mm', measurement: '', quantity: 6, unit: 'pcs', rate: 170000 },
+        { item: '60×40×1.5mm', measurement: '', quantity: 10, unit: 'pcs', rate: 80000 },
+        { item: 'Labour', measurement: '', quantity: 1, unit: '—', rate: 900000 }
+    ];
+
+    // Measurement tables: each has { id, title, columns:[], rows:[[]] }
+    let measTables = [
+        {
+            id: mt_id(),
+            title: 'First Floor — Windows',
+            columns: ['Window', 'Front', 'Back', 'Side', 'Bathroom', 'Total'],
+            rows: [
+                ['Right', '191 x 61', '171 x 184', '173 x 152', '130 x 61', ''],
+                ['Left',  '191 x 63', '175 x 185', '176 x 62',  '131 x 63', '']
+            ]
+        },
+        {
+            id: mt_id(),
+            title: 'First Floor — Doors',
+            columns: ['Door', 'Right', 'Left', 'Total'],
+            rows: [
+                ['Main',    '275 x 93',  '277 x 95',  ''],
+                ['Balcony', '275 x 223', '274 x 211', '']
+            ]
+        }
+    ];
+
+    function mt_id() { return 'mt_' + Math.random().toString(36).substr(2,8); }
+
+    document.getElementById('invoiceDate').valueAsDate = new Date();
+    const dd = new Date(); dd.setDate(dd.getDate()+30);
+    document.getElementById('dueDate').valueAsDate = dd;
+
+    /* ===== TAB SWITCHING ===== */
+    function switchTab(name) {
+        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('tab-'+name).classList.add('active');
+        event.target.classList.add('active');
+    }
+
+    /* ===== TEMPLATE ===== */
+    function selectTemplate(n) {
+        currentTemplate = n;
+        document.querySelectorAll('.template-option').forEach((el,i) => el.classList.toggle('active', i+1===n));
+        updateInvoice();
+    }
+
+    /* ===== LINE ITEMS ===== */
+    function addItem() { items.push({item:'',measurement:'',quantity:1,unit:'pcs',rate:0}); renderItems(); updateInvoice(); }
+    function removeItem(i) { items.splice(i,1); renderItems(); updateInvoice(); }
+    function updateItem(i,f,v) { items[i][f]=v; updateInvoice(); }
+
+    function renderItems() {
+        document.getElementById('itemsContainer').innerHTML = items.map((item,i) => `
+            <div class="item-row">
+                <input type="text" placeholder="Item" value="${item.item}" oninput="updateItem(${i},'item',this.value)">
+                <input type="text" placeholder="Meas." value="${item.measurement}" oninput="updateItem(${i},'measurement',this.value)">
+                <input type="number" placeholder="Qty" value="${item.quantity}" oninput="updateItem(${i},'quantity',parseFloat(this.value)||0)">
+                <select onchange="updateItem(${i},'unit',this.value)">
+                    <option value="pcs" ${item.unit==='pcs'?'selected':''}>pcs</option>
+                    <option value="m" ${item.unit==='m'?'selected':''}>m</option>
+                    <option value="m²" ${item.unit==='m²'?'selected':''}>m²</option>
+                    <option value="set" ${item.unit==='set'?'selected':''}>set</option>
+                    <option value="—" ${item.unit==='—'?'selected':''}>—</option>
+                </select>
+                <input type="number" placeholder="Rate" value="${item.rate}" oninput="updateItem(${i},'rate',parseFloat(this.value)||0)">
+                <input type="text" value="${formatCurrency(item.quantity*item.rate)}" disabled>
+                <button class="btn btn-danger" onclick="removeItem(${i})">×</button>
+            </div>`).join('');
+    }
+
+    /* ===== MEASUREMENT TABLES ===== */
+    function addMeasTable() {
+        measTables.push({ id:mt_id(), title:'New Table', columns:['Label','Col 1','Col 2','Total'], rows:[['Row 1','','','']] });
+        renderMeasEditor();
+        updateInvoice();
+    }
+
+    function removeMeasTable(id) {
+        measTables = measTables.filter(t => t.id !== id);
+        renderMeasEditor();
+        updateInvoice();
+    }
+
+    function updateMeasTitle(id, val) {
+        const t = measTables.find(t => t.id===id);
+        if(t) t.title = val;
+        updateInvoice();
+    }
+
+    function addMeasCol(id) {
+        const t = measTables.find(t => t.id===id);
+        if(!t) return;
+        t.columns.push('Col ' + t.columns.length);
+        t.rows.forEach(r => r.push(''));
+        renderMeasEditor();
+        updateInvoice();
+    }
+
+    function removeMeasCol(id, ci) {
+        const t = measTables.find(t => t.id===id);
+        if(!t || t.columns.length <= 1) return;
+        t.columns.splice(ci,1);
+        t.rows.forEach(r => r.splice(ci,1));
+        renderMeasEditor();
+        updateInvoice();
+    }
+
+    function updateMeasCol(id, ci, val) {
+        const t = measTables.find(t => t.id===id);
+        if(t) { t.columns[ci]=val; updateInvoice(); }
+    }
+
+    function addMeasRow(id) {
+        const t = measTables.find(t => t.id===id);
+        if(!t) return;
+        t.rows.push(t.columns.map(()=>''));
+        renderMeasEditor();
+        updateInvoice();
+    }
+
+    function removeMeasRow(id, ri) {
+        const t = measTables.find(t => t.id===id);
+        if(!t) return;
+        t.rows.splice(ri,1);
+        renderMeasEditor();
+        updateInvoice();
+    }
+
+    function updateMeasCell(id, ri, ci, val) {
+        const t = measTables.find(t => t.id===id);
+        if(t && t.rows[ri]) { t.rows[ri][ci]=val; updateInvoice(); }
+    }
+
+    function renderMeasEditor() {
+        const container = document.getElementById('measTablesContainer');
+        container.innerHTML = measTables.map(t => {
+            const colsHtml = t.columns.map((c,ci) => `
+                <input class="meas-col-input" type="text" value="${esc(c)}" 
+                    placeholder="Col ${ci+1}"
+                    oninput="updateMeasCol('${t.id}',${ci},this.value)"
+                    title="Column header">
+                <button class="meas-col-del" onclick="removeMeasCol('${t.id}',${ci})" title="Remove column">✕</button>
+            `).join('');
+
+            const rowsHtml = t.rows.map((row,ri) => `
+                <div class="meas-row-line">
+                    ${row.map((cell,ci) => `
+                        <input type="text" value="${esc(cell)}" 
+                            placeholder="${esc(t.columns[ci]||'')}"
+                            oninput="updateMeasCell('${t.id}',${ri},${ci},this.value)">
+                    `).join('')}
+                    <button class="meas-row-del" onclick="removeMeasRow('${t.id}',${ri})" title="Remove row">✕</button>
+                </div>`).join('');
+
+            return `
+            <div class="meas-table-block">
+                <div class="meas-table-block-header">
+                    <input type="text" value="${esc(t.title)}" placeholder="Table Title (e.g. First Floor — Windows)"
+                        oninput="updateMeasTitle('${t.id}',this.value)">
+                    <button class="btn btn-danger" onclick="removeMeasTable('${t.id}')" title="Delete table">🗑</button>
+                </div>
+                <div class="meas-section-label">Columns <span style="color:#555">(rename or remove)</span></div>
+                <div class="meas-cols-row">
+                    ${colsHtml}
+                    <button class="meas-col-add-btn" onclick="addMeasCol('${t.id}')">+ Col</button>
+                </div>
+                <div class="meas-section-label" style="margin-top:10px;">Rows</div>
+                ${rowsHtml}
+                <button class="meas-add-row-btn" onclick="addMeasRow('${t.id}')">＋ Add Row</button>
+            </div>`;
+        }).join('');
+    }
+
+    function esc(str) {
+        return String(str||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    /* ===== CURRENCY ===== */
+    function formatCurrency(amount) {
+        const cur = document.getElementById('currency').value;
+        if(cur==='UGX') return `UGX ${amount.toLocaleString('en-US',{maximumFractionDigits:0})}`;
+        return cur + amount.toFixed(2);
+    }
+
+    /* ===== TOTALS ===== */
+    function calculateTotals() {
+        const sub = items.reduce((s,i) => s + i.quantity*i.rate, 0);
+        const dr = parseFloat(document.getElementById('discount').value)||0;
+        const da = sub*(dr/100);
+        const af = sub - da;
+        const tr = parseFloat(document.getElementById('taxRate').value)||0;
+        const ta = af*(tr/100);
+        return {subtotal:sub, discountAmount:da, taxAmount:ta, total:af+ta};
+    }
+
+    /* ===== MEASUREMENT TABLES HTML FOR PREVIEW ===== */
+    function renderMeasTablesHtml() {
+        if(!measTables.length) return '';
+        return measTables.map(t => {
+            const thCells = t.columns.map(c => `<th>${c}</th>`).join('');
+            const tRows = t.rows.map(row => {
+                const tds = row.map(cell => `<td>${cell}</td>`).join('');
+                return `<tr>${tds}</tr>`;
+            }).join('');
+            return `
+            <div>
+                <div class="meas-section-header">${t.title}</div>
+                <table class="meas-data-table">
+                    <thead><tr>${thCells}</tr></thead>
+                    <tbody>${tRows}</tbody>
+                </table>
+            </div>`;
+        }).join('');
+    }
+
+    /* ===== MAIN UPDATE ===== */
+    function updateInvoice() {
+        const invNum = document.getElementById('invoiceNumber').value;
+        const invDate = document.getElementById('invoiceDate').value;
+        const dueDate = document.getElementById('dueDate').value;
+        const compName = document.getElementById('companyName').value;
+        const compAddr = document.getElementById('companyAddress').value;
+        const compEmail = document.getElementById('companyEmail').value;
+        const compPhone = document.getElementById('companyPhone').value;
+        const cliName = document.getElementById('clientName').value;
+        const cliAddr = document.getElementById('clientAddress').value;
+        const payTerms = document.getElementById('paymentTerms').value;
+        const notes = document.getElementById('notes').value;
+        const taxRate = document.getElementById('taxRate').value;
+        const discount = document.getElementById('discount').value;
+        const docTitle = (document.getElementById('docTitle')||{}).value || 'INVOICE';
+        const showMeas = (document.getElementById('showMeas')||{}).value || 'after';
+
+        const {subtotal, discountAmount, taxAmount, total} = calculateTotals();
+
+        const itemsHtml = items.map(item => `
+            <tr>
+                <td>${item.item}</td>
+                <td>${item.measurement}</td>
+                <td class="text-right">${item.quantity}</td>
+                <td>${item.unit}</td>
+                <td class="text-right">${formatCurrency(item.rate)}</td>
+                <td class="text-right">${formatCurrency(item.quantity*item.rate)}</td>
+            </tr>`).join('');
+
+        const lineItemsBlock = `
+            <table class="invoice-table">
+                <thead><tr>
+                    <th>Item</th><th>Measurement</th>
+                    <th class="text-right">Qty</th><th>Unit</th>
+                    <th class="text-right">Cost Price</th>
+                    <th class="text-right">Total Amount</th>
+                </tr></thead>
+                <tbody>${itemsHtml}</tbody>
+            </table>
+            <div class="totals-section">
+                <div class="total-row"><span>Subtotal:</span><span>${formatCurrency(subtotal)}</span></div>
+                ${discount>0?`<div class="total-row"><span>Discount (${discount}%):</span><span>-${formatCurrency(discountAmount)}</span></div>`:''}
+                <div class="total-row"><span>Tax (${taxRate}%):</span><span>${formatCurrency(taxAmount)}</span></div>
+                <div class="total-row grand-total"><span>TOTAL:</span><span>${formatCurrency(total)}</span></div>
+            </div>`;
+
+        const measHtml = showMeas!=='none' ? `<div class="meas-section">${renderMeasTablesHtml()}</div>` : '';
+
+        const html = `
+        <div class="invoice template-${currentTemplate}">
+            <div class="invoice-header">
+                <div class="company-info">
+                    <h2>${compName}</h2>
+                    <p style="white-space:pre-line">${compAddr}</p>
+                    <p>${compEmail}</p><p>${compPhone}</p>
+                </div>
+                <div class="invoice-details">
+                    <div class="invoice-title">${docTitle}</div>
+                    <div class="invoice-meta">
+                        <p><strong>No:</strong> ${invNum}</p>
+                        <p><strong>Date:</strong> ${invDate ? new Date(invDate).toLocaleDateString() : ''}</p>
+                        <p><strong>Due:</strong> ${dueDate ? new Date(dueDate).toLocaleDateString() : ''}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="invoice-parties">
+                <div class="party-box"><h3>Bill To</h3><p><strong>${cliName}</strong></p><p style="white-space:pre-line">${cliAddr}</p></div>
+                <div class="party-box"><h3>Payment Terms</h3><p style="white-space:pre-line">${payTerms}</p></div>
+            </div>
+            ${showMeas==='before' ? measHtml : ''}
+            ${lineItemsBlock}
+            ${showMeas==='after' ? measHtml : ''}
+            <div class="invoice-footer">
+                <div class="notes-section"><h4>Notes</h4><p style="white-space:pre-line">${notes}</p></div>
+            </div>
+        </div>`;
+
+        document.getElementById('invoicePreview').innerHTML = html;
+    }
+
+    /* ===== EXPORT ===== */
+    function downloadPDF() {
+        const el = document.getElementById('invoicePreview');
+        const num = document.getElementById('invoiceNumber').value || 'invoice';
+        const opt = {
+            margin:0, filename:`${num}.pdf`,
+            image:{type:'jpeg',quality:0.98},
+            html2canvas:{scale:2,useCORS:true},
+            jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}
+        };
+        html2pdf().set(opt).from(el).toPdf().output('blob').then(blob => {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `${num}.pdf`;
+            document.body.appendChild(a); a.click();
+            document.body.removeChild(a);
+            setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+        }).catch(()=>html2pdf().set(opt).from(el).save());
+    }
+
+    function printInvoice() { window.print(); }
+
+    // Init
+    renderItems();
+    renderMeasEditor();
+    updateInvoice();
+</script>
+
+<style media="print">
+    body { background: white; }
+    .editor-panel, .header { display: none; }
+    .main-grid { display: block; }
+    .preview-panel { box-shadow: none; border-radius: 0; }
+</style>
+</body>
+</html>
