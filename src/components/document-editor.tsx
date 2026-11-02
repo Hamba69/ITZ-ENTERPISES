@@ -20,6 +20,7 @@ import {
   documentSchema,
   lineTotal,
   money,
+  statusOf,
   templates,
   totals,
   uid,
@@ -46,6 +47,8 @@ export function DocumentEditor({
   const [preview, setPreview] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [itemEntryMode, setItemEntryMode] = useState<'cards' | 'table'>('cards');
+  const isExisting = workspace.documents.some((d) => d.id === doc.id);
+  const isIssued = initial.status === 'issued';
   const patch = (v: Partial<Invoice>) => {
     setDoc((d) => ({ ...d, ...v }));
     setDirty(true);
@@ -56,7 +59,7 @@ export function DocumentEditor({
   const save = async (issue: boolean) => {
     const next = {
       ...doc,
-      status: issue ? ('issued' as const) : ('draft' as const),
+      status: isIssued ? ('issued' as const) : issue ? ('issued' as const) : ('draft' as const),
       updatedAt: new Date().toISOString(),
     };
     const result = documentSchema.safeParse(next);
@@ -95,8 +98,16 @@ export function DocumentEditor({
         </button>
         <div className="editor-title">
           <strong>{initial.number}</strong>
-          <span className="badge draft">Draft</span>
-          <small>{dirty ? 'Unsaved changes' : 'New document'}</small>
+          <span className={'badge ' + statusOf(doc)}>{statusOf(doc)}</span>
+          <small>
+            {dirty
+              ? 'Unsaved changes'
+              : isIssued
+                ? 'Post-issue edits are recorded'
+                : isExisting
+                  ? 'Editing saved draft'
+                  : 'New document'}
+          </small>
         </div>
         <div className="actions">
           <button className="button" onClick={() => setPreview(true)}>
@@ -105,12 +116,14 @@ export function DocumentEditor({
           </button>
           <button className="button" disabled={busy} onClick={() => save(false)}>
             <Save size={16} />
-            Save draft
+            {isIssued ? 'Save changes' : 'Save draft'}
           </button>
-          <button className="button primary" disabled={busy} onClick={() => save(true)}>
-            <Check size={16} />
-            {busy ? 'Saving…' : 'Issue ' + doc.kind}
-          </button>
+          {!isIssued && (
+            <button className="button primary" disabled={busy} onClick={() => save(true)}>
+              <Check size={16} />
+              {busy ? 'Saving…' : 'Issue ' + doc.kind}
+            </button>
+          )}
         </div>
       </div>
       <div className="editor-layout">
@@ -120,7 +133,11 @@ export function DocumentEditor({
             <h1>
               {workspace.documents.some((d) => d.id === doc.id) ? 'Edit' : 'New'} {doc.kind}
             </h1>
-            <p>Good work deserves a great invoice.</p>
+            <p>
+              {isIssued
+                ? 'Changes to this issued document will be kept in its audit trail.'
+                : 'Good work deserves a great invoice.'}
+            </p>
           </div>
           <div className="tabs">
             {[

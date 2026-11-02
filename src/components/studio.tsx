@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import {
   addDays,
+  auditDocumentChange,
   csv,
   currencies,
   demoWorkspace,
@@ -51,6 +52,7 @@ import {
   uid,
   workspaceSchema,
   type Currency,
+  type DocumentAuditEntry,
   type Invoice,
   type Workspace,
 } from '@/lib/business';
@@ -82,6 +84,28 @@ const navigation = [
   { label: 'Templates', icon: Palette },
 ] as const;
 const localKey = 'itz-studio-local-v1';
+const auditFieldLabels: Record<string, string> = {
+  number: 'Document number',
+  kind: 'Document type',
+  status: 'Status',
+  client: 'Client details',
+  company: 'Company details',
+  project: 'Project / reference',
+  issueDate: 'Issue date',
+  dueDate: 'Due date / validity',
+  currency: 'Currency',
+  items: 'Line items',
+  discount: 'Discount',
+  tax: 'Tax',
+  payments: 'Payments',
+  notes: 'Notes',
+  terms: 'Terms',
+  template: 'Template',
+  font: 'Typography',
+  measurements: 'Measurement schedules',
+  measurementPosition: 'Measurement placement',
+  createdAt: 'Created date',
+};
 export function Studio() {
   const [w, setW] = useState<Workspace>(emptyWorkspace);
   const [ready, setReady] = useState(false);
@@ -272,11 +296,19 @@ export function Studio() {
   const start = (kind: Invoice['kind'] = 'invoice', template?: Invoice['template']) =>
     setEditor({ ...newDocument(w, kind), ...(template ? { template } : {}) });
   async function saveDocument(d: Invoice) {
+    const existing = w.documents.find((x) => x.id === d.id);
+    const savedDocument = existing
+      ? auditDocumentChange(
+          existing,
+          d,
+          user || (mode === 'demo' ? 'Sample workspace' : 'This device'),
+        )
+      : d;
     return commit({
       ...w,
       documents: w.documents.some((x) => x.id === d.id)
-        ? w.documents.map((x) => (x.id === d.id ? d : x))
-        : [d, ...w.documents],
+        ? w.documents.map((x) => (x.id === d.id ? savedDocument : x))
+        : [savedDocument, ...w.documents],
     });
   }
   function duplicate(d: Invoice, convert = false) {
@@ -1637,7 +1669,7 @@ export function Studio() {
                   Convert to invoice
                 </button>
               )}
-              {selectedDoc.status === 'draft' && (
+              {selectedDoc.status !== 'void' && (
                 <button
                   className="button primary"
                   onClick={() => {
@@ -1645,7 +1677,7 @@ export function Studio() {
                     setSelected(null);
                   }}
                 >
-                  Edit draft
+                  {selectedDoc.status === 'draft' ? 'Edit draft' : 'Edit document'}
                 </button>
               )}
               {selectedDoc.kind === 'invoice' &&
@@ -1733,6 +1765,62 @@ export function Studio() {
           <div className="full-preview print-area">
             <DocumentView doc={selectedDoc} />
           </div>
+          {selectedDoc.status !== 'draft' && (
+            <section className="audit-trail" aria-labelledby="audit-trail-title">
+              <div className="audit-trail-heading">
+                <div>
+                  <h3 id="audit-trail-title">Post-issue audit trail</h3>
+                  <p>
+                    Each saved change keeps the complete document version from immediately before
+                    that change.
+                  </p>
+                </div>
+                <span>
+                  {selectedDoc.auditTrail.length}{' '}
+                  {selectedDoc.auditTrail.length === 1 ? 'revision' : 'revisions'}
+                </span>
+              </div>
+              {selectedDoc.auditTrail.length ? (
+                <ol>
+                  {[...selectedDoc.auditTrail].reverse().map((entry: DocumentAuditEntry) => {
+                    const timestamp = new Date(entry.changedAt);
+                    const dateLabel = Number.isNaN(timestamp.getTime())
+                      ? entry.changedAt
+                      : new Intl.DateTimeFormat(undefined, {
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        }).format(timestamp);
+                    return (
+                      <li key={entry.id}>
+                        <div className="audit-entry-heading">
+                          <strong>
+                            {entry.action === 'voided' ? 'Document voided' : 'Document edited'}
+                          </strong>
+                          <time dateTime={entry.changedAt}>
+                            {dateLabel} · {entry.actor}
+                          </time>
+                        </div>
+                        <p>
+                          Changed:{' '}
+                          {entry.changedFields
+                            .map((field) => auditFieldLabels[field] ?? field)
+                            .join(', ')}
+                        </p>
+                        <details className="audit-revision">
+                          <summary>View previous version</summary>
+                          <div className="full-preview audit-preview">
+                            <DocumentView doc={entry.previous} />
+                          </div>
+                        </details>
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : (
+                <p className="muted">No changes have been saved since this document was issued.</p>
+              )}
+            </section>
+          )}
           <div className="document-management">
             {selectedDoc.status === 'draft' ? (
               <button
@@ -1771,7 +1859,9 @@ export function Studio() {
               </button>
             ) : (
               <p className="muted">
-                Issued documents remain in your records. Duplicate to create a revised draft.
+                {selectedDoc.status === 'void'
+                  ? 'Voided documents remain in your records and cannot be edited.'
+                  : 'Issued documents remain in your records. Use Edit document to make an audited revision.'}
               </p>
             )}
             {selectedDoc.payments.length > 0 && (

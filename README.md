@@ -22,7 +22,8 @@ npm start
 
 ## What you can do
 
-- Create, edit and save draft invoices and quotations; issue documents, duplicate them, convert quotations to invoices, and void unpaid issued documents.
+- Create, edit and save draft invoices and quotations; issue documents, edit issued or paid documents, duplicate them, convert quotations to invoices, and void unpaid issued documents.
+- Review a post-issue audit trail on each issued document. Every saved edit, payment change or void records its timestamp, actor, changed fields and the complete previous document version; open any entry to inspect that version.
 - Assign audit-friendly document numbers automatically: invoices use `I-ITZ-YYYY-NNN`, quotations use `Q-ITZ-YYYY-NNN`. The year and sequence are system-controlled, sequence numbers advance past the highest existing number for that type and year, and existing document numbers are preserved.
 - Add real itemised rows with description, specification, quantity, unit, unit price and calculated amount. Reorder rows or reuse saved catalogue items.
 - Apply a percentage discount before tax. Set the applicable tax rate explicitly; the default is zero.
@@ -36,7 +37,7 @@ npm start
 - Record paid expenses, view cash received, outstanding/overdue amounts, net cash movement, six-month cash charts and category spending.
 - Search/filter documents, search records, export document and expense CSVs, and back up/restore the complete workspace as validated JSON.
 
-Issued documents retain snapshots of the company, client and prices. Editing your business settings or client book does not rewrite existing invoices. Issued documents cannot be edited through the UI: duplicate to revise; void an unpaid incorrect document. Drafts can be deleted. An invoice with payments cannot be voided until erroneous entries are corrected.
+Issued documents retain snapshots of the company, client and prices. Editing your business settings or client book does not rewrite existing invoices. Use **Edit document** to revise an issued or paid invoice or quotation; its status and recorded payments remain in place, and the previous version is added to its audit trail. Drafts can be deleted. An invoice with payments cannot be voided until erroneous entries are corrected. Audit history is stored with workspace data and is not cryptographically tamper-proof.
 
 ## Local, sample and cloud workspaces
 

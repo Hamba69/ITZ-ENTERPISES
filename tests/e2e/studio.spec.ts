@@ -39,10 +39,21 @@ test('invoice lifecycle, exact totals, measurement schedule, PDF, persistence an
   await page.getByRole('button', { name: 'Edit draft' }).click();
   await page.getByRole('button', { name: 'Issue invoice', exact: true }).click();
   await page.getByRole('button', { name: /^I-ITZ-\d{4}-001$/, exact: true }).click();
+  await page.getByRole('button', { name: 'Edit document', exact: true }).click();
+  await page.getByLabel('Project / reference').fill('Post-issue revised scope');
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await page.getByRole('button', { name: /^I-ITZ-\d{4}-001$/, exact: true }).click();
+  await expect(page.locator('dialog .print-area .document')).toContainText(
+    'Post-issue revised scope',
+  );
+  await expect(page.locator('.audit-trail')).toContainText('1 revision');
+  await expect(page.locator('.audit-trail')).toContainText('Project / reference');
+  await page.locator('.audit-revision summary').click();
+  await expect(page.locator('.audit-preview')).not.toContainText('Post-issue revised scope');
   await page.getByRole('button', { name: 'Record payment' }).click();
   await page.getByLabel('Amount (UGX)').fill('200000');
   await page.getByRole('button', { name: 'Save payment', exact: true }).click();
-  await expect(page.locator('dialog .document-totals')).toContainText('341,620');
+  await expect(page.locator('dialog .print-area .document-totals')).toContainText('341,620');
   const dl = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download PDF' }).click();
   const pdf = await dl;
@@ -80,6 +91,30 @@ test('collapsible sidebar and tabular item entry keep quotation totals in sync',
   await expect(page.locator('.preview-scale')).toContainText('Item total');
   await expect(page.locator('.preview-scale')).toContainText('Quotation');
   await expect(page.locator('.preview-scale')).toContainText('5,500');
+});
+
+test('paid invoices can be edited without losing payment or revision history', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Create invoice', exact: true }).click();
+  await page.getByLabel('Client name', { exact: true }).fill('Paid invoice client');
+  await page.getByLabel('Description', { exact: true }).fill('Completed fabrication');
+  await page.getByLabel('Unit price', { exact: true }).fill('1000');
+  await page.getByRole('button', { name: 'Issue invoice', exact: true }).click();
+  await page.getByRole('button', { name: /^I-ITZ-\d{4}-001$/, exact: true }).click();
+  await page.getByRole('button', { name: 'Record payment' }).click();
+  await page.getByRole('button', { name: 'Save payment', exact: true }).click();
+  await expect(page.locator('.document-actions .badge')).toHaveText('paid');
+
+  await page.getByRole('button', { name: 'Edit document', exact: true }).click();
+  await page.getByLabel('Project / reference').fill('Completed project');
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await page.getByRole('button', { name: /^I-ITZ-\d{4}-001$/, exact: true }).click();
+  await expect(page.locator('.document-actions .badge')).toHaveText('paid');
+  await expect(page.locator('dialog .print-area .document')).toContainText('Completed project');
+  await expect(page.locator('.audit-trail')).toContainText('2 revisions');
+  await expect(page.locator('.audit-trail')).toContainText('This device');
+  await expect(page.locator('.audit-trail')).toContainText('Payments');
+  await expect(page.locator('.audit-trail')).toContainText('Project / reference');
 });
 
 test('system numbering is fixed and locked for new documents', async ({ page }) => {

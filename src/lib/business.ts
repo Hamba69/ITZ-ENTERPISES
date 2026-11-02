@@ -97,38 +97,48 @@ export const measurementSchema = z
     (t) => t.rows.every((r) => r.length === t.columns.length),
     'Measurement cells must match the columns',
   );
-export const documentSchema = z
-  .object({
-    id,
-    number: text
-      .trim()
-      .min(1)
-      .max(64)
-      .regex(
-        /^[A-Za-z0-9][A-Za-z0-9 ._/-]*$/,
-        'Use letters, numbers, spaces, dots, dashes or slashes for document numbers',
-      ),
-    kind: z.enum(['invoice', 'quotation']),
-    status: z.enum(['draft', 'issued', 'void']),
-    client: clientSchema,
-    company: companySchema,
-    project: text,
-    issueDate: date,
-    dueDate: date,
-    currency: z.enum(currencies),
-    items: z.array(itemSchema).min(1).max(200),
-    discount: z.number().min(0).max(100),
-    tax: z.number().min(0).max(100),
-    payments: z.array(paymentSchema).max(500),
-    notes: text,
-    terms: text,
-    template: z.enum(['industrial', 'forge', 'editorial', 'blueprint']),
-    font: z.enum(['sans', 'serif', 'mono']),
-    measurements: z.array(measurementSchema).max(20),
-    measurementPosition: z.enum(['after', 'before', 'hidden']),
-    createdAt: text,
-    updatedAt: text,
-  })
+const documentRevisionFields = {
+  id,
+  number: text
+    .trim()
+    .min(1)
+    .max(64)
+    .regex(
+      /^[A-Za-z0-9][A-Za-z0-9 ._/-]*$/,
+      'Use letters, numbers, spaces, dots, dashes or slashes for document numbers',
+    ),
+  kind: z.enum(['invoice', 'quotation']),
+  status: z.enum(['draft', 'issued', 'void']),
+  client: clientSchema,
+  company: companySchema,
+  project: text,
+  issueDate: date,
+  dueDate: date,
+  currency: z.enum(currencies),
+  items: z.array(itemSchema).min(1).max(200),
+  discount: z.number().min(0).max(100),
+  tax: z.number().min(0).max(100),
+  payments: z.array(paymentSchema).max(500),
+  notes: text,
+  terms: text,
+  template: z.enum(['industrial', 'forge', 'editorial', 'blueprint']),
+  font: z.enum(['sans', 'serif', 'mono']),
+  measurements: z.array(measurementSchema).max(20),
+  measurementPosition: z.enum(['after', 'before', 'hidden']),
+  createdAt: text,
+  updatedAt: text,
+};
+export const documentRevisionSchema = z.object(documentRevisionFields);
+const documentAuditSchema = z.object({
+  id,
+  changedAt: text.min(1),
+  actor: text.min(1).max(200),
+  action: z.enum(['edited', 'voided']),
+  changedFields: z.array(text.min(1)).min(1).max(30),
+  previous: documentRevisionSchema,
+});
+export const documentSchema = documentRevisionSchema
+  .extend({ auditTrail: z.array(documentAuditSchema).default([]) })
   .superRefine((d, ctx) => {
     if (d.dueDate < d.issueDate)
       ctx.addIssue({
@@ -241,11 +251,40 @@ export type Client = z.infer<typeof clientSchema>;
 export type Company = z.infer<typeof companySchema>;
 export type LineItem = z.infer<typeof itemSchema>;
 export type Invoice = z.infer<typeof documentSchema>;
+export type DocumentRevision = z.infer<typeof documentRevisionSchema>;
+export type DocumentAuditEntry = z.infer<typeof documentAuditSchema>;
 export type Product = z.infer<typeof productSchema>;
 export type Expense = z.infer<typeof expenseSchema>;
 export type Workspace = z.infer<typeof workspaceSchema>;
 export type Currency = (typeof currencies)[number];
 export const uid = () => crypto.randomUUID();
+export function auditDocumentChange(previous: Invoice, next: Invoice, actor: string): Invoice {
+  if (previous.status !== 'issued') return next;
+
+  const { auditTrail: _previousAuditTrail, ...previousRevision } = previous;
+  const { auditTrail: _nextAuditTrail, ...nextRevision } = next;
+  const changedFields = (Object.keys(previousRevision) as (keyof DocumentRevision)[]).filter(
+    (key) =>
+      key !== 'updatedAt' &&
+      JSON.stringify(previousRevision[key]) !== JSON.stringify(nextRevision[key]),
+  );
+  if (!changedFields.length) return next;
+
+  return {
+    ...next,
+    auditTrail: [
+      ...(previous.auditTrail ?? []),
+      {
+        id: uid(),
+        changedAt: next.updatedAt,
+        actor,
+        action: next.status === 'void' ? 'voided' : 'edited',
+        changedFields,
+        previous: previousRevision,
+      },
+    ],
+  };
+}
 export function today() {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Africa/Kampala',
@@ -367,6 +406,7 @@ export function newDocument(w: Workspace, kind: Invoice['kind'] = 'invoice'): In
     discount: 0,
     tax: 0,
     payments: [],
+    auditTrail: [],
     notes: w.company.notes,
     terms: w.company.terms,
     template: 'industrial',

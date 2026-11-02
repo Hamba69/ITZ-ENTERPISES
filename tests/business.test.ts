@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  auditDocumentChange,
   csv,
   demoWorkspace,
   documentSchema,
@@ -69,6 +70,33 @@ test('rejects overpayments, invalid dates, negative prices and quote payments', 
     false,
   );
 });
+test('post-issue edits record a timestamped full previous revision', () => {
+  const previous = { ...newDocument(emptyWorkspace()), status: 'issued' as const };
+  previous.client.name = 'Existing client';
+  previous.items[0].description = 'Existing service';
+  const next = {
+    ...previous,
+    project: 'Revised project scope',
+    updatedAt: new Date().toISOString(),
+  };
+  const revised = auditDocumentChange(previous, next, 'account@example.com');
+  assert.equal(revised.auditTrail.length, 1);
+  assert.equal(revised.auditTrail[0].actor, 'account@example.com');
+  assert.equal(revised.auditTrail[0].action, 'edited');
+  assert.equal(revised.auditTrail[0].previous.project, '');
+  assert.equal(revised.auditTrail[0].changedFields.includes('project'), true);
+  assert.equal(documentSchema.safeParse(revised).success, true);
+
+  const unchanged = auditDocumentChange(
+    revised,
+    {
+      ...revised,
+      updatedAt: new Date().toISOString(),
+    },
+    'account@example.com',
+  );
+  assert.equal(unchanged.auditTrail.length, 1);
+});
 test('sample workspace validates and duplicate numbers or IDs are rejected', () => {
   const w = demoWorkspace();
   assert.equal(workspaceSchema.safeParse(w).success, true);
@@ -82,6 +110,15 @@ test('sample workspace validates and duplicate numbers or IDs are rejected', () 
       documents: [...w.documents, { ...w.documents[0], id: 'new-id' }],
     }).success,
     false,
+  );
+  const legacy = {
+    ...w,
+    documents: w.documents.map(({ auditTrail: _auditTrail, ...document }) => document),
+  };
+  const restored = workspaceSchema.parse(legacy);
+  assert.equal(
+    restored.documents.every((document) => document.auditTrail.length === 0),
+    true,
   );
   assert.notEqual(nextNumber(w, 'invoice'), w.documents[0].number);
 });

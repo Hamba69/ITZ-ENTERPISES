@@ -2340,6 +2340,73 @@ small {
   gap: 15px;
   flex-wrap: wrap;
 }
+.audit-trail {
+  padding: 24px;
+  border-top: 1px solid var(--line);
+  background: #f8fafb;
+}
+.audit-trail-heading,
+.audit-entry-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.audit-trail-heading h3 {
+  margin: 0 0 5px;
+  font-size: 14px;
+}
+.audit-trail-heading p,
+.audit-trail li > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.audit-trail-heading > span {
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.audit-trail ol {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.audit-trail li {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+}
+.audit-entry-heading {
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 11px;
+}
+.audit-entry-heading time {
+  color: var(--muted);
+  font-size: 10px;
+}
+.audit-revision {
+  margin-top: 12px;
+  font-size: 11px;
+}
+.audit-revision summary {
+  color: var(--blue);
+  cursor: pointer;
+  font-weight: 600;
+}
+.audit-preview {
+  margin-top: 12px;
+  max-height: 640px;
+  overflow: auto;
+  padding: 20px 10px;
+}
+.audit-preview .document {
+  min-height: auto;
+}
 .document-management {
   padding: 25px;
   font-size: 12px;

@@ -1,6 +1,6 @@
-import { formatDate, lineTotal, money, totals, type Invoice } from '@/lib/business';
+import { formatDate, lineTotal, money, totals, type DocumentRevision } from '@/lib/business';
 import { Brand } from './ui';
-export function DocumentView({ doc }: { doc: Invoice }) {
+export function DocumentView({ doc }: { doc: DocumentRevision }) {
   const t = totals(doc);
   const measurements = (
     <div className="measurement-print">
