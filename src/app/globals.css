@@ -782,6 +782,191 @@ small {
 .stat.accent > strong {
   color: #1c547f;
 }
+.overview-analytics {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+  gap: 21px;
+  margin-bottom: 28px;
+}
+.overview-cash-panel .panel-heading {
+  padding-bottom: 8px;
+}
+.overview-cash-panel .cash-chart {
+  height: 190px;
+  margin: 4px 24px 0;
+  padding-top: 23px;
+}
+.overview-cash-panel .chart-grid {
+  inset: 23px 0 30px;
+}
+.overview-cash-panel .chart-legend {
+  margin-top: 0;
+  padding-bottom: 14px;
+}
+.overview-cash-panel .chart-data {
+  margin: 0 24px 17px;
+}
+.currency-tag {
+  padding: 5px 8px;
+  border: 1px solid #e6ebef;
+  border-radius: 5px;
+  color: #718394;
+  background: #f8fafb;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+.receivables-body {
+  padding: 0 22px 18px;
+}
+.receivables-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.receivables-total strong {
+  color: #183a59;
+  font-size: 25px;
+  letter-spacing: -0.8px;
+  font-weight: 600;
+}
+.receivables-total > span {
+  color: #8795a1;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.aging-stack {
+  display: flex;
+  width: 100%;
+  height: 9px;
+  overflow: hidden;
+  margin: 14px 0 12px;
+  border-radius: 8px;
+  background: #eef2f5;
+}
+.aging-segment {
+  min-width: 2px;
+}
+.aging-segment.current,
+.aging-dot.current {
+  background: #668da8;
+}
+.aging-segment.recent,
+.aging-dot.recent {
+  background: #d6a177;
+}
+.aging-segment.late,
+.aging-dot.late {
+  background: #cf7959;
+}
+.aging-segment.old,
+.aging-dot.old {
+  background: #ad514b;
+}
+.aging-breakdown {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  list-style: none;
+  margin: 0;
+  padding: 0 0 15px;
+}
+.aging-breakdown li,
+.aging-breakdown li > span {
+  display: flex;
+  align-items: center;
+}
+.aging-breakdown li {
+  justify-content: space-between;
+  gap: 7px;
+  color: #83919d;
+  font-size: 9px;
+}
+.aging-breakdown li > span {
+  gap: 6px;
+  min-width: 0;
+}
+.aging-breakdown strong {
+  color: #526577;
+  font-size: 9px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.aging-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 2px;
+}
+.follow-up-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 0 8px;
+  border-top: 1px solid #edf0f2;
+}
+.follow-up-heading h3 {
+  font-size: 11px;
+}
+.follow-up-heading > span {
+  color: #95a1ab;
+  font-size: 8px;
+  text-align: right;
+}
+.follow-up-list {
+  margin: 0 -22px;
+}
+.follow-up-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 10px;
+  padding: 10px 22px;
+  border: 0;
+  border-top: 1px solid #f0f2f4;
+  background: #fff;
+  text-align: left;
+}
+.follow-up-row:hover {
+  background: #fafcfd;
+}
+.follow-up-copy {
+  flex: 1;
+  min-width: 0;
+}
+.follow-up-copy strong,
+.follow-up-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.follow-up-copy strong {
+  color: #42586b;
+  font-size: 10px;
+  font-weight: 500;
+}
+.follow-up-copy small {
+  margin-top: 4px;
+  color: #929eaa;
+  font-size: 9px;
+}
+.follow-up-amount {
+  color: #a64e43;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.follow-up-row > svg {
+  color: #a7b3bd;
+}
+.follow-up-empty {
+  padding: 10px 0 2px;
+  color: #83919d;
+  font-size: 10px;
+}
 .overview-lower {
   display: grid;
   grid-template-columns: minmax(0, 1.95fr) minmax(255px, 1fr);
@@ -2646,6 +2831,9 @@ small {
   .overview-lower {
     grid-template-columns: 1fr;
   }
+  .overview-analytics {
+    grid-template-columns: 1fr;
+  }
   .quick-panel {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -3178,6 +3366,14 @@ small {
   }
   .stat > small {
     font-size: 8px;
+  }
+  .aging-breakdown {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+  .aging-breakdown li,
+  .aging-breakdown strong {
+    font-size: 10px;
   }
   .quantity-grid {
     grid-template-columns: 1fr 1fr;

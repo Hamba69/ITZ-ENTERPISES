@@ -354,6 +354,27 @@ export function Studio() {
   const expenses = w.expenses
     .filter((e) => e.currency === currency)
     .reduce((a, e) => a + e.amount, 0);
+  const currentDate = today();
+  const agingBands = [
+    { label: 'Not due yet', tone: 'current', value: 0 },
+    { label: '1–30 days late', tone: 'recent', value: 0 },
+    { label: '31–60 days late', tone: 'late', value: 0 },
+    { label: 'Over 60 days late', tone: 'old', value: 0 },
+  ];
+  for (const invoice of invoices) {
+    const balance = totals(invoice).balance;
+    if (balance <= 0) continue;
+    const daysLate = Math.floor(
+      (Date.parse(currentDate) - Date.parse(invoice.dueDate)) / 86_400_000,
+    );
+    const band = daysLate <= 0 ? 0 : daysLate <= 30 ? 1 : daysLate <= 60 ? 2 : 3;
+    agingBands[band].value += balance;
+  }
+  const followUps = invoices
+    .filter((d) => totals(d).balance > 0 && d.dueDate <= addDays(currentDate, 7))
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+    .slice(0, 3);
+  const openInvoiceCount = invoices.filter((d) => totals(d).balance > 0).length;
   const filtered = w.documents
     .filter(
       (d) =>
@@ -692,6 +713,110 @@ export function Studio() {
                     value={money(expenses, currency)}
                     detail="Materials, labour & running costs"
                   />
+                </div>
+                <div className="overview-analytics">
+                  <section className="panel overview-cash-panel">
+                    <div className="panel-heading">
+                      <div>
+                        <h2>Money in and out</h2>
+                        <p>Recorded cash movement · last six months</p>
+                      </div>
+                      <span className="currency-tag">{currency}</span>
+                    </div>
+                    <CashChart workspace={w} currency={currency} />
+                  </section>
+                  <section className="panel receivables-panel">
+                    <div className="panel-heading">
+                      <div>
+                        <h2>Receivables health</h2>
+                        <p>Outstanding invoice balances · {currency}</p>
+                      </div>
+                      <button
+                        className="text-button"
+                        aria-label="Open invoice list"
+                        onClick={() => go('Invoices')}
+                      >
+                        Invoices <ArrowUpRight size={14} />
+                      </button>
+                    </div>
+                    <div className="receivables-body">
+                      <div className="receivables-total">
+                        <strong>{money(outstanding, currency)}</strong>
+                        <span>
+                          {openInvoiceCount} open invoice{openInvoiceCount === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                      <div
+                        className="aging-stack"
+                        role="img"
+                        aria-label={`Outstanding invoice balances by age: ${agingBands.map((band) => `${band.label}, ${money(band.value, currency)}`).join('; ')}`}
+                      >
+                        {agingBands.map(
+                          (band) =>
+                            band.value > 0 && (
+                              <span
+                                key={band.tone}
+                                className={`aging-segment ${band.tone}`}
+                                style={{ width: `${(band.value / outstanding) * 100}%` }}
+                              />
+                            ),
+                        )}
+                      </div>
+                      <ul className="aging-breakdown">
+                        {agingBands.map((band) => (
+                          <li key={band.tone}>
+                            <span>
+                              <i className={`aging-dot ${band.tone}`} />
+                              {band.label}
+                            </span>
+                            <strong>{money(band.value, currency)}</strong>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="follow-up-heading">
+                        <h3>Priority follow-up</h3>
+                        <span>Overdue and due within 7 days</span>
+                      </div>
+                      {followUps.length ? (
+                        <div className="follow-up-list">
+                          {followUps.map((invoice) => {
+                            const daysUntilDue = Math.round(
+                              (Date.parse(invoice.dueDate) - Date.parse(currentDate)) / 86_400_000,
+                            );
+                            const dueLabel =
+                              daysUntilDue < 0
+                                ? `${-daysUntilDue} day${daysUntilDue === -1 ? '' : 's'} overdue`
+                                : daysUntilDue === 0
+                                  ? 'Due today'
+                                  : `Due in ${daysUntilDue} days`;
+                            return (
+                              <button
+                                className="follow-up-row"
+                                key={invoice.id}
+                                onClick={() => setSelected(invoice.id)}
+                                aria-label={`Open ${invoice.number}, ${invoice.client.name}, ${dueLabel}, balance ${money(totals(invoice).balance, invoice.currency)}`}
+                              >
+                                <span className="follow-up-copy">
+                                  <strong>{invoice.client.name}</strong>
+                                  <small>
+                                    {invoice.number} · {dueLabel}
+                                  </small>
+                                </span>
+                                <strong className="follow-up-amount">
+                                  {money(totals(invoice).balance, invoice.currency)}
+                                </strong>
+                                <ChevronRight size={16} />
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="follow-up-empty">
+                          No invoice is overdue or due within the next 7 days.
+                        </p>
+                      )}
+                    </div>
+                  </section>
                 </div>
                 <div className="overview-lower">
                   <section className="panel recent-panel">

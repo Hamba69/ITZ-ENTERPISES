@@ -128,6 +128,8 @@ test('responsive navigation, template selection and modal keyboard dismissal', a
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Good work. Clear numbers.' })).toBeVisible();
+  await page.getByRole('button', { name: 'Explore sample workspace' }).click();
+  await expect(page.getByRole('heading', { name: 'Receivables health' })).toBeVisible();
   await page.screenshot({ path: 'test-results/mobile-overview.png', fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
@@ -144,8 +146,22 @@ test('responsive navigation, template selection and modal keyboard dismissal', a
 test('dashboard screenshot and unauthenticated API protection', async ({ page, request }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Explore sample workspace' }).click();
+  await expect(page.getByRole('heading', { name: 'Receivables health' })).toBeVisible();
+  await expect(
+    page.getByRole('img', {
+      name: 'Cash received and expenses paid for the last six months in UGX',
+    }),
+  ).toBeVisible();
+  await expect(page.locator('.aging-stack')).toHaveAttribute(
+    'aria-label',
+    /Outstanding invoice balances by age/,
+  );
+  await expect(page.locator('.follow-up-row')).toHaveCount(1);
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: 'test-results/desktop-overview.png', fullPage: true });
+  await page.locator('.follow-up-row').click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('button', { name: 'Close dialog' }).click();
   const response = await request.get('/api/workspace');
   expect(response.status()).toBe(401);
   const invalid = await request.put('/api/workspace', { data: { data: {}, version: 0 } });
