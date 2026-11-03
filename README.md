@@ -41,24 +41,26 @@ Issued documents retain snapshots of the company, client and prices. Editing you
 
 ## Local, sample and cloud workspaces
 
-**Local mode** works immediately and saves to this browser's local storage. Export JSON backups regularly; clearing browser data removes local records. Other tabs cannot silently overwrite newer local data. Unreadable stored data is left intact and saving is blocked until an explicit valid backup restore. A raw backup export is available for recovery.
+**Local mode** saves to this browser's local storage and does not sync to other devices. Export JSON backups regularly; clearing browser data removes local records. Other tabs cannot silently overwrite newer local data. Unreadable stored data is left intact and saving is blocked until an explicit valid backup restore. A raw backup export is available for recovery.
 
 **Sample mode** is an explicitly labelled, temporary workspace. Its fictional customers use example.com addresses. It does not overwrite local or cloud records and is discarded on reload. The materials and example prices are derived from the original concept; sample documents are not actual trading records.
 
 **Cloud mode** uses Supabase email/password authentication and a private workspace per user. It opens separately from local data. To move local data, export its JSON backup, connect the cloud account, then restore the backup after reviewing the replacement confirmation. A failed cloud save leaves the form open and does not report success. Conflicting device versions are rejected instead of silently overwriting records.
 
+**Shared-link mode** creates a database-backed copy of the current workspace and gives you a link that opens the same data on other devices. Every saved change is written to Supabase, including post-issue document revisions, payments, clients, expenses and settings. Version checks reject stale saves rather than silently overwriting newer changes. The link is a bearer credential: anyone who has it can read, edit and export the entire workspace. It is not a substitute for user authentication, and links cannot currently be revoked. Share it only with trusted people; real authentication and access controls should replace this temporary mode.
+
 ## Finish the Supabase setup
 
-The app uses project `rmmwkuihqmezwdugttsr`. Its Auth endpoint responded during setup, but the new workspace table was not available through the Data API. The existing CLI account does not have administrative access to this project. **The remote migration has not been applied, and live sign-in/persistence have not been verified.** No service-role key is required by the app.
+The app uses project `rmmwkuihqmezwdugttsr`. Its Auth endpoint responded during setup, but the workspace tables were not available through the Data API. The existing CLI account does not have administrative access to this project. **The remote migrations have not been applied, and live database persistence has not been verified.** No service-role key is required by the app.
 
 1. Open the SQL Editor for the supplied Supabase project.
-2. Run the complete contents of [`supabase/migrations/20261101160933_itz_business_workspace.sql`](supabase/migrations/20261101160933_itz_business_workspace.sql) once. It creates only `itz_workspaces`, its access policies and `itz_save_workspace`. It does not touch a `todos` table or any existing business tables.
+2. Run the complete contents of [`supabase/migrations/20261101160933_itz_business_workspace.sql`](supabase/migrations/20261101160933_itz_business_workspace.sql), then [`supabase/migrations/20261103100000_itz_shared_link_workspaces.sql`](supabase/migrations/20261103100000_itz_shared_link_workspaces.sql), once each and in that order. The first creates the private authenticated workspace. The second creates a separate shared-link workspace. Neither migration touches a `todos` table or existing business tables.
 3. Enable email/password sign-in in Authentication. Configure SMTP for reliable confirmation and reset mail before production use.
 4. Set the development Site URL to `http://localhost:3000`. Allow the redirect URLs `http://localhost:3000/auth/callback` and `http://localhost:3000/auth/callback?recovery=1`. Add the equivalent HTTPS URLs when deploying.
-5. In the app, select **Connect cloud**, create and confirm your account, and sign in. Save a client, reload, reconnect and confirm it persists. Repeat with a second account to verify isolation on the hosted project.
+5. In the app, test **Create shareable workspace link** with non-sensitive sample data, then open the copied link in a separate browser/device and confirm changes persist both ways. Anyone holding that link can access all of its data. Also test **Connect cloud** with a confirmed account, save a client, reload, reconnect and confirm it persists. Repeat with a second account to verify isolation on the hosted project.
 6. Check Supabase's Security Advisors after applying the SQL. The migration's RLS and grants have been exercised against a local PostgreSQL engine, but that does not establish the hosted project's complete configuration.
 
-The SQL is an initial migration; do not run it twice against an already initialised database. If using the Supabase CLI later, link the correct project and align migration history before applying further migrations.
+These SQL scripts are one-time migrations; do not rerun a script that has already been applied. If using the Supabase CLI later, link the correct project and align migration history before applying further migrations.
 
 ## Deploy on Vercel
 
@@ -86,14 +88,14 @@ Before relying on cloud accounts in the deployed app:
 4. Set the two Vercel environment variables for the target environment and redeploy after changing them.
 5. Verify signup/confirmation, sign-in, password recovery, save/reload and workspace isolation using two separate test accounts before inviting real users.
 
-Local mode does not require the database migration, but the deployed cloud sign-in and persistence do. The Vercel deployment itself does not apply Supabase migrations.
+Local mode does not require the database migration, but shared-link storage and cloud sign-in/persistence do. The Vercel deployment itself does not apply Supabase migrations.
 
 ## Data design and boundaries
 
 - Next.js App Router, TypeScript, React, Supabase SSR clients, Zod validation, Decimal.js calculations, jsPDF and AutoTable.
-- The cloud database stores one JSONB business aggregate per authenticated owner. This is a deliberate small-workspace design: related changes save atomically and exports use the same validated format. It is not a multi-user organisation/role system or a high-volume accounting database.
+- The database stores a JSONB business aggregate per authenticated owner or per shared-link token. This is a deliberate small-workspace design: related changes save atomically and exports use the same validated format. It is not a high-volume accounting database.
 - `owner_id` is a primary key and foreign key to Auth users. All access uses the authenticated user's session. RLS restricts SELECT/INSERT/UPDATE to that owner. Anonymous access and TRUNCATE privileges are explicitly revoked.
-- `itz_save_workspace` is security-invoker, uses an empty search path and compares the expected version before updating. No service-role key or security-definer bypass is used.
+- `itz_save_workspace` is security-invoker, uses an empty search path and compares the expected version before updating. The shared-link RPCs use narrowly scoped security-definer functions with an empty search path because the anonymous link mode has no user identity; direct table access is revoked and each RPC requires a SHA-256 token hash. No service-role key is used.
 - Application/API validation covers required fields, finite bounded numbers, unique document numbers/IDs, valid dates, currency precision, rectangular schedules and overpayments. The API additionally checks request origin and size. Database constraints enforce ownership, basic aggregate format, version and payload size; the full business schema is validated by the application.
 - A workspace is limited to approximately 5 MB. The JSON format is versioned. For high-volume use, evolve to normalised, paginated records and a migration/import process.
 - Reports describe recorded cash movement, not statutory accounts, tax filing or inventory stock levels. Quotes, drafts and void documents are excluded from receivables.
@@ -110,7 +112,7 @@ npm run build
 npm run test:e2e
 ```
 
-The browser suite starts the production server if one is not already running. After changing source, rebuild before running it. PostgreSQL tests use PGlite to run the actual migration and exercise two-user access isolation, blocked anonymous access and stale-version handling. They do not connect to the hosted database.
+The browser suite starts the production server if one is not already running. After changing source, rebuild before running it. PostgreSQL tests use PGlite to run the actual migrations and exercise owner isolation, blocked direct table access and stale-version handling. They do not connect to the hosted database.
 
 Screenshots and downloaded test PDFs are written under ignored `test-results/`. The complete verification results and known limits are recorded in [VERIFICATION.md](VERIFICATION.md).
 

@@ -38,8 +38,7 @@ test('invoice lifecycle, exact totals, measurement schedule, PDF, persistence an
   await expect(page.locator('dialog .document')).toHaveClass(/template-forge font-serif/);
   await page.getByRole('button', { name: 'Edit draft' }).click();
   await page.getByRole('button', { name: 'Issue invoice', exact: true }).click();
-  await page.getByRole('button', { name: /^I-ITZ-\d{4}-001$/, exact: true }).click();
-  await page.getByRole('button', { name: 'Edit document', exact: true }).click();
+  await page.getByRole('button', { name: /^Edit I-ITZ-\d{4}-001$/ }).click();
   await page.getByLabel('Project / reference').fill('Post-issue revised scope');
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
   await page.getByRole('button', { name: /^I-ITZ-\d{4}-001$/, exact: true }).click();
@@ -201,6 +200,57 @@ test('dashboard screenshot and unauthenticated API protection', async ({ page, r
   expect(response.status()).toBe(401);
   const invalid = await request.put('/api/workspace', { data: { data: {}, version: 0 } });
   expect(invalid.status()).toBe(403);
+  expect((await request.get('/api/shared-workspace')).status()).toBe(401);
+  expect((await request.post('/api/shared-workspace', { data: { data: {} } })).status()).toBe(403);
+});
+
+test('share links load and save workspace data through the database API', async ({
+  page,
+  context,
+}) => {
+  const workspace = demoWorkspace();
+  const token = 'a'.repeat(43);
+  let storedWorkspace = workspace;
+  let version = 0;
+  await context.route('**/api/shared-workspace', async (route) => {
+    const request = route.request();
+    if (request.method() === 'POST') {
+      storedWorkspace = request.postDataJSON().data;
+      version = 1;
+      await route.fulfill({ json: { token, version } });
+    } else if (request.method() === 'GET') {
+      expect(request.headers().authorization).toBe(`Bearer ${token}`);
+      await route.fulfill({ json: { data: storedWorkspace, version } });
+    } else {
+      const body = request.postDataJSON();
+      expect(body.version).toBe(version);
+      storedWorkspace = body.data;
+      version += 1;
+      await route.fulfill({ json: { version } });
+    }
+  });
+  await page.addInitScript(
+    (data) => localStorage.setItem('itz-studio-local-v1', JSON.stringify(data)),
+    workspace,
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Create shareable workspace link' }).click();
+  const shareLink = page.getByLabel('Workspace link');
+  await expect(shareLink).toHaveValue(new RegExp(`#workspace=${token}$`));
+  const sharedUrl = await shareLink.inputValue();
+
+  await page.getByRole('button', { name: 'Invoices', exact: true }).click();
+  await page.getByRole('button', { name: /^Edit I-ITZ-.*001$/ }).click();
+  await page.getByLabel('Project / reference').fill('Saved from a shared link');
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  expect(storedWorkspace.documents[0].project).toBe('Saved from a shared link');
+
+  const secondDevice = await context.newPage();
+  await secondDevice.goto(sharedUrl);
+  await secondDevice.getByRole('button', { name: 'Invoices', exact: true }).click();
+  await expect(secondDevice.locator('table')).toContainText('Saved from a shared link');
 });
 
 test('local conflict prevents a stale tab from overwriting another tab', async ({

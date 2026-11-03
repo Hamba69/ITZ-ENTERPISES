@@ -80,3 +80,65 @@ test('Postgres migration enforces owner isolation, authentication and conflict c
     await db.close();
   }
 });
+
+test('shared workspace migration restricts table access and enforces link-version checks', async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(`create role anon; create role authenticated;`);
+    await db.exec(
+      'alter default privileges in schema public grant all on tables to anon, authenticated;',
+    );
+    await db.exec(
+      await readFile(
+        new URL(
+          '../supabase/migrations/20261103100000_itz_shared_link_workspaces.sql',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+    );
+    await db.exec('set role anon;');
+    const tokenHash = 'a'.repeat(64);
+    const payload = `{"schemaVersion":1,"marker":"shared-data"}`;
+    const created = await db.query<{ version: number }>(
+      `select public.itz_create_shared_workspace('${tokenHash}', '${payload}'::jsonb) as version`,
+    );
+    assert.equal(created.rows[0].version, 1);
+    const fetched = await db.query<{ data: { marker: string }; version: number }>(
+      `select * from public.itz_get_shared_workspace('${tokenHash}')`,
+    );
+    assert.equal(fetched.rows[0].data.marker, 'shared-data');
+    assert.equal(fetched.rows[0].version, 1);
+    const saved = await db.query<{ version: number }>(
+      `select public.itz_save_shared_workspace('${tokenHash}', '{"schemaVersion":1,"marker":"updated"}'::jsonb, 1) as version`,
+    );
+    assert.equal(saved.rows[0].version, 2);
+    await assert.rejects(
+      () =>
+        db.query(
+          `select public.itz_save_shared_workspace('${tokenHash}', '{"schemaVersion":1}'::jsonb, 1)`,
+        ),
+      /Workspace conflict/,
+    );
+    await assert.rejects(
+      () => db.query('select * from public.itz_shared_workspaces'),
+      /permission denied/,
+    );
+    await assert.rejects(
+      () =>
+        db.query(
+          `select public.itz_create_shared_workspace('not-a-hash', '{"schemaVersion":1}'::jsonb)`,
+        ),
+      /Invalid shared workspace data/,
+    );
+    await assert.rejects(
+      () =>
+        db.query(
+          `select public.itz_create_shared_workspace('${'b'.repeat(64)}', '{"schemaVersion":2}'::jsonb)`,
+        ),
+      /Invalid shared workspace data/,
+    );
+  } finally {
+    await db.close();
+  }
+});

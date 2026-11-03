@@ -62,7 +62,7 @@ import { DocumentView } from './document-view';
 import { DocumentEditor } from './document-editor';
 import { CompanyForm, RecordModal, type RecordForm } from './record-forms';
 
-type Mode = 'local' | 'demo' | 'cloud';
+type Mode = 'local' | 'demo' | 'cloud' | 'shared';
 type Page =
   | 'Overview'
   | 'Invoices'
@@ -112,6 +112,8 @@ export function Studio() {
   const [mode, setMode] = useState<Mode>('local');
   const [version, setVersion] = useState(0);
   const [user, setUser] = useState('');
+  const [sharedToken, setSharedToken] = useState('');
+  const [sharedLink, setSharedLink] = useState('');
   const [page, setPage] = useState<Page>('Overview');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
@@ -136,29 +138,31 @@ export function Studio() {
   const selectedDoc = w.documents.find((d) => d.id === selected);
   const notify = (text: string, error = false) => setNotice({ text, error });
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(localKey);
-      localSnapshot.current = raw;
-      if (raw) {
-        const parsed = workspaceSchema.safeParse(JSON.parse(raw));
-        if (parsed.success) setW(parsed.data);
-        else {
-          localCorrupt.current = true;
-          notify(
-            'Saved local data could not be read. It has been left intact. Export a raw device backup in Settings, then restore a valid backup.',
-            true,
-          );
-        }
-      }
-    } catch {
-      localCorrupt.current = true;
-      notify(
-        'Browser storage is unavailable or unreadable. Do not rely on local saving until this is resolved.',
-        true,
-      );
-    }
-    setReady(true);
     const params = new URLSearchParams(window.location.search);
+    const shared = new URLSearchParams(window.location.hash.slice(1)).get('workspace');
+    const loadLocal = () => {
+      try {
+        const raw = localStorage.getItem(localKey);
+        localSnapshot.current = raw;
+        if (raw) {
+          const parsed = workspaceSchema.safeParse(JSON.parse(raw));
+          if (parsed.success) setW(parsed.data);
+          else {
+            localCorrupt.current = true;
+            notify(
+              'Saved local data could not be read. It has been left intact. Export a raw device backup in Settings, then restore a valid backup.',
+              true,
+            );
+          }
+        }
+      } catch {
+        localCorrupt.current = true;
+        notify(
+          'Browser storage is unavailable or unreadable. Do not rely on local saving until this is resolved.',
+          true,
+        );
+      }
+    };
     if (params.has('recovery')) {
       setAuthMode('update');
       setAuthOpen(true);
@@ -172,6 +176,37 @@ export function Studio() {
     }
     if (params.has('recovery') || params.has('confirmed') || params.has('auth_error'))
       window.history.replaceState({}, '', window.location.pathname);
+    if (shared && /^[A-Za-z0-9_-]{43}$/.test(shared)) {
+      setSharedToken(shared);
+      setSharedLink(window.location.href);
+      setMode('shared');
+      setW(emptyWorkspace());
+      void (async () => {
+        try {
+          const res = await fetch('/api/shared-workspace', {
+            cache: 'no-store',
+            headers: { Authorization: `Bearer ${shared}` },
+          });
+          const body = await res.json();
+          if (!res.ok) throw new Error(body.error);
+          setW(workspaceSchema.parse(body.data));
+          setVersion(body.version);
+          setUser('Anyone with the link');
+        } catch (e) {
+          notify(e instanceof Error ? e.message : 'Could not open the shared workspace.', true);
+        } finally {
+          setReady(true);
+        }
+      })();
+    } else if (shared) {
+      setMode('shared');
+      setW(emptyWorkspace());
+      notify('This shared workspace link is invalid.', true);
+      setReady(true);
+    } else {
+      loadLocal();
+      setReady(true);
+    }
     const client = createClient();
     const {
       data: { subscription },
@@ -224,6 +259,18 @@ export function Studio() {
         const body = await res.json();
         if (!res.ok) throw new Error(body.error);
         setVersion(body.version);
+      } else if (mode === 'shared') {
+        const res = await fetch('/api/shared-workspace', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${sharedToken}`,
+          },
+          body: JSON.stringify({ data: parsed.data, version }),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error);
+        setVersion(body.version);
       } else if (mode === 'local') {
         const write = () => {
           if (localCorrupt.current && !replacing)
@@ -246,9 +293,11 @@ export function Studio() {
       notify(
         mode === 'cloud'
           ? 'Saved to your cloud workspace.'
-          : mode === 'demo'
-            ? 'Updated sample workspace.'
-            : 'Saved on this device.',
+          : mode === 'shared'
+            ? 'Saved to the shared workspace.'
+            : mode === 'demo'
+              ? 'Updated sample workspace.'
+              : 'Saved on this device.',
       );
       return true;
     } catch (e) {
@@ -273,7 +322,12 @@ export function Studio() {
       setW(next);
       setVersion(body.version);
       setUser(auth.data.user.email || 'Signed in');
+      setSharedToken('');
+      setSharedLink('');
       setMode('cloud');
+      const url = new URL(window.location.href);
+      url.hash = '';
+      window.history.replaceState({}, '', url);
       setAuthOpen(false);
       notify('Cloud workspace opened. Local records remain separate.');
     } catch (e) {
@@ -287,10 +341,58 @@ export function Studio() {
       const raw = localStorage.getItem(localKey);
       localSnapshot.current = raw;
       setW(raw ? workspaceSchema.parse(JSON.parse(raw)) : emptyWorkspace());
+      setSharedToken('');
+      setSharedLink('');
       setMode('local');
+      const url = new URL(window.location.href);
+      url.hash = '';
+      window.history.replaceState({}, '', url);
       go('Overview');
     } catch {
       notify('Could not read local data. Your stored data has been left intact.', true);
+    }
+  }
+  async function createSharedWorkspace() {
+    if (
+      !window.confirm(
+        'Anyone with the new link can read and edit all records copied into it. Continue?',
+      )
+    )
+      return;
+    try {
+      const res = await fetch('/api/shared-workspace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: w }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error);
+      if (
+        typeof body.token !== 'string' ||
+        !/^[A-Za-z0-9_-]{43}$/.test(body.token) ||
+        !Number.isSafeInteger(body.version) ||
+        body.version < 1
+      )
+        throw new Error('Supabase returned an invalid shared workspace link.');
+      const url = new URL(window.location.href);
+      url.hash = new URLSearchParams({ workspace: body.token }).toString();
+      window.history.replaceState({}, '', url);
+      setSharedToken(body.token);
+      setSharedLink(url.href);
+      setVersion(body.version);
+      setUser('Anyone with the link');
+      setMode('shared');
+      notify('Shared workspace created in Supabase. Copy the link to open it on other devices.');
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Could not create a shared workspace.', true);
+    }
+  }
+  async function copySharedLink() {
+    try {
+      await navigator.clipboard.writeText(sharedLink);
+      notify('Workspace link copied.');
+    } catch {
+      notify('Copy failed. Select and copy the workspace link shown in Settings.', true);
     }
   }
   const start = (kind: Invoice['kind'] = 'invoice', template?: Invoice['template']) =>
@@ -470,13 +572,25 @@ export function Studio() {
                 </small>
               </td>
               <td>
-                <button
-                  className="icon-button"
-                  aria-label={`Open ${d.number}`}
-                  onClick={() => setSelected(d.id)}
-                >
-                  <ChevronRight size={18} />
-                </button>
+                <div className="actions">
+                  {d.status !== 'void' && (
+                    <button
+                      className="button small"
+                      aria-label={`Edit ${d.number}`}
+                      onClick={() => setEditor(d)}
+                    >
+                      <Pencil size={14} />
+                      Edit
+                    </button>
+                  )}
+                  <button
+                    className="icon-button"
+                    aria-label={`Open ${d.number}`}
+                    onClick={() => setSelected(d.id)}
+                  >
+                    <ChevronRight size={18} />
+                  </button>
+                </div>
               </td>
             </tr>
           ))}
@@ -569,9 +683,11 @@ export function Studio() {
             <span className="live-dot" />
             {mode === 'cloud'
               ? 'CLOUD WORKSPACE'
-              : mode === 'demo'
-                ? 'SAMPLE WORKSPACE'
-                : 'LOCAL WORKSPACE'}
+              : mode === 'shared'
+                ? 'SHARED WORKSPACE'
+                : mode === 'demo'
+                  ? 'SAMPLE WORKSPACE'
+                  : 'LOCAL WORKSPACE'}
             <small>v1.0</small>
           </div>
         </div>
@@ -612,11 +728,22 @@ export function Studio() {
                 ? 'Saving…'
                 : mode === 'cloud'
                   ? 'Cloud connected'
-                  : mode === 'demo'
-                    ? 'Sample data'
-                    : 'Saved on this device'}
+                  : mode === 'shared'
+                    ? 'Shared link workspace'
+                    : mode === 'demo'
+                      ? 'Sample data'
+                      : 'Saved on this device'}
             </span>
-            {mode === 'local' ? (
+            {mode === 'shared' ? (
+              <button
+                className="button small"
+                onClick={copySharedLink}
+                disabled={!!editor || saving}
+              >
+                <Copy size={15} />
+                Copy workspace link
+              </button>
+            ) : mode === 'local' ? (
               <button className="button small" onClick={openCloud} disabled={!!editor || saving}>
                 <Cloud size={15} />
                 Connect cloud
@@ -1460,11 +1587,13 @@ export function Studio() {
                       <Cloud size={26} className="blue-icon" />
                       <h2>Your workspace</h2>
                       <p className="muted">
-                        {mode === 'cloud'
-                          ? `Signed in as ${user}. Changes save to Supabase.`
-                          : mode === 'demo'
-                            ? 'You are exploring temporary sample data.'
-                            : 'Local mode saves to this browser on this device. Back up regularly or connect your cloud account.'}
+                        {mode === 'shared'
+                          ? 'Changes save to Supabase and are available across devices using the workspace link.'
+                          : mode === 'cloud'
+                            ? `Signed in as ${user}. Changes save to your private Supabase workspace.`
+                            : mode === 'demo'
+                              ? 'You are exploring temporary sample data.'
+                              : 'Local mode saves to this browser on this device. Back up regularly or connect your cloud account.'}
                       </p>
                       {mode !== 'cloud' && (
                         <button className="button primary" onClick={openCloud}>
@@ -1472,9 +1601,45 @@ export function Studio() {
                         </button>
                       )}
                       <p className="small-text muted">
-                        Cloud mode requires the included database migration. Each account owns a
-                        private business workspace.
+                        {mode === 'shared'
+                          ? 'Anyone holding this link can read, edit and export all workspace records. There is no user-level access control yet.'
+                          : 'Cloud mode requires the included database migration. Each account owns a private business workspace.'}
                       </p>
+                      {mode === 'shared' ? (
+                        <>
+                          <Field label="Shareable workspace link">
+                            <input
+                              aria-label="Workspace link"
+                              readOnly
+                              value={sharedLink}
+                              onFocus={(event) => event.currentTarget.select()}
+                            />
+                          </Field>
+                          <button
+                            className="button"
+                            onClick={copySharedLink}
+                            disabled={!sharedLink}
+                          >
+                            <Copy size={16} />
+                            Copy workspace link
+                          </button>
+                        </>
+                      ) : mode !== 'demo' ? (
+                        <>
+                          <p className="small-text muted">
+                            Create a separate database copy of this workspace. Anyone with its link
+                            can read and edit the copied records.
+                          </p>
+                          <button
+                            className="button primary"
+                            onClick={createSharedWorkspace}
+                            disabled={saving}
+                          >
+                            <Cloud size={16} />
+                            Create shareable workspace link
+                          </button>
+                        </>
+                      ) : null}
                     </section>
                     <section className="panel">
                       <Download size={25} className="blue-icon" />
