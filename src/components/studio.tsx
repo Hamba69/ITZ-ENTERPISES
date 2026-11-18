@@ -138,12 +138,19 @@ export function Studio() {
     setClientLinks(body);
   }
   useEffect(() => {
-    if (mode !== 'cloud') { setClientLinks(emptyLinks); setClientLinkDocument(null); return; }
-    void refreshClientLinks().catch(e => setNotice({ text: e.message, error: true }));
+    if (mode !== 'cloud') {
+      setClientLinks(emptyLinks);
+      setClientLinkDocument(null);
+      return;
+    }
+    void refreshClientLinks().catch((e) => setNotice({ text: e.message, error: true }));
   }, [mode]);
   async function openClientLink(doc: Invoice) {
-    const existing = clientLinks.links.find(l => l.document_id === doc.id);
-    if (existing) { setClientLinkDocument(doc); return; }
+    const existing = clientLinks.links.find((l) => l.document_id === doc.id);
+    if (existing) {
+      setClientLinkDocument(doc);
+      return;
+    }
     const tab = window.open('about:blank', '_blank');
     if (tab) tab.opener = null;
     setLinkBusy(true);
@@ -152,12 +159,17 @@ export function Studio() {
       const res = await fetch('/api/client-links', { cache: 'no-store' });
       const state: LinkState = await res.json();
       if (!res.ok) throw new Error('Could not load client link.');
-      setClientLinks(state); setClientLinkDocument(doc);
-      const link = state.links.find(l => l.document_id === doc.id);
+      setClientLinks(state);
+      setClientLinkDocument(doc);
+      const link = state.links.find((l) => l.document_id === doc.id);
       if (tab && link) tab.location.href = `/c/${link.raw_token}`;
       if (result.warning) notify(result.warning, true);
-    } catch(e) { tab?.close(); notify(e instanceof Error ? e.message : 'Could not create link.', true); }
-    finally { setLinkBusy(false); }
+    } catch (e) {
+      tab?.close();
+      notify(e instanceof Error ? e.message : 'Could not create link.', true);
+    } finally {
+      setLinkBusy(false);
+    }
   }
   const [version, setVersion] = useState(0);
   const [user, setUser] = useState('');
@@ -381,13 +393,14 @@ export function Studio() {
       }
       setW(parsed.data);
       notify(
-        receiptWarning || (mode === 'cloud'
-          ? 'Saved to your cloud workspace.'
-          : mode === 'shared'
-            ? 'Saved to the shared workspace.'
-            : mode === 'demo'
-              ? 'Updated sample workspace.'
-              : 'Saved on this device.'),
+        receiptWarning ||
+          (mode === 'cloud'
+            ? 'Saved to your cloud workspace.'
+            : mode === 'shared'
+              ? 'Saved to the shared workspace.'
+              : mode === 'demo'
+                ? 'Updated sample workspace.'
+                : 'Saved on this device.'),
       );
       return true;
     } catch (e) {
@@ -397,6 +410,11 @@ export function Studio() {
       savingRef.current = false;
       setSaving(false);
     }
+  }
+  function promptAdminSignIn(message?: string) {
+    setAuthMode('signin');
+    setAuthError(message || 'Sign in with an authorized admin account to continue.');
+    setAuthOpen(true);
   }
   async function openCloud() {
     try {
@@ -426,10 +444,12 @@ export function Studio() {
             if (mergeResponse.ok) {
               localStorage.setItem(localCloudImportKey, localHash);
               localImported = mergeBody.merged === true;
-            }
-            else if (mergeResponse.status === 409)
+            } else if (mergeResponse.status === 401) {
+              promptAdminSignIn(mergeBody.error);
+              return;
+            } else if (mergeResponse.status === 409) {
               localImportWarning = mergeBody.error || 'Local records could not be merged.';
-            else throw new Error(mergeBody.error || 'Could not sync local records.');
+            } else throw new Error(mergeBody.error || 'Could not sync local records.');
           } else if (!hasWorkspaceData(localData)) {
             localStorage.setItem(localCloudImportKey, localHash);
           }
@@ -442,6 +462,10 @@ export function Studio() {
       }
       const res = await fetch('/api/workspace', { cache: 'no-store' });
       const body = await res.json();
+      if (res.status === 401) {
+        promptAdminSignIn(body.error);
+        return;
+      }
       if (!res.ok) throw new Error(body.error);
       const next = body.data ? workspaceSchema.parse(body.data) : emptyWorkspace();
       setW(next);
@@ -679,7 +703,14 @@ export function Studio() {
               <td>
                 <button className="table-link" onClick={() => setSelected(d.id)}>
                   {d.number}
-                  {mode === 'cloud' && clientLinks.links.some(l => l.document_id === d.id) && <small className="badge">Client link{clientLinks.links.find(l => l.document_id === d.id)?.unread ? ` · ${clientLinks.links.find(l => l.document_id === d.id)?.unread} unread` : ''}</small>}
+                  {mode === 'cloud' && clientLinks.links.some((l) => l.document_id === d.id) && (
+                    <small className="badge">
+                      Client link
+                      {clientLinks.links.find((l) => l.document_id === d.id)?.unread
+                        ? ` · ${clientLinks.links.find((l) => l.document_id === d.id)?.unread} unread`
+                        : ''}
+                    </small>
+                  )}
                 </button>
                 <small>{d.client.name}</small>
               </td>
@@ -1951,9 +1982,25 @@ export function Studio() {
           }}
         >
           <div className="document-actions">
-            <span title={mode !== 'cloud' ? 'Connect your cloud workspace to share a client link.' : selectedDoc.status === 'draft' ? 'Issue this document before creating a client link.' : undefined}>
-              <button className="button" disabled={mode !== 'cloud' || selectedDoc.status === 'draft' || linkBusy} onClick={() => openClientLink(selectedDoc)}>Client link</button>
-              {(mode !== 'cloud' || selectedDoc.status === 'draft') && <small>{mode !== 'cloud' ? 'Cloud mode only' : 'Issue document first'}</small>}
+            <span
+              title={
+                mode !== 'cloud'
+                  ? 'Connect your cloud workspace to share a client link.'
+                  : selectedDoc.status === 'draft'
+                    ? 'Issue this document before creating a client link.'
+                    : undefined
+              }
+            >
+              <button
+                className="button"
+                disabled={mode !== 'cloud' || selectedDoc.status === 'draft' || linkBusy}
+                onClick={() => openClientLink(selectedDoc)}
+              >
+                Client link
+              </button>
+              {(mode !== 'cloud' || selectedDoc.status === 'draft') && (
+                <small>{mode !== 'cloud' ? 'Cloud mode only' : 'Issue document first'}</small>
+              )}
             </span>
             <span className={'badge ' + statusOf(selectedDoc)}>{statusOf(selectedDoc)}</span>
             <div className="actions">
@@ -2209,7 +2256,14 @@ export function Studio() {
           </div>
         </Modal>
       )}
-      {clientLinkDocument && mode === 'cloud' && <ClientLinkDialog doc={clientLinkDocument} state={clientLinks} refresh={refreshClientLinks} onClose={() => setClientLinkDocument(null)} />}
+      {clientLinkDocument && mode === 'cloud' && (
+        <ClientLinkDialog
+          doc={clientLinkDocument}
+          state={clientLinks}
+          refresh={refreshClientLinks}
+          onClose={() => setClientLinkDocument(null)}
+        />
+      )}
       {authOpen && (
         <Modal
           title={

@@ -327,6 +327,41 @@ test('share links load and save workspace data through the database API', async 
   await expect(secondDevice.locator('table')).toContainText('Saved from a shared link');
 });
 
+test('an expired cloud session prompts for sign-in and preserves local records', async ({
+  page,
+  context,
+}) => {
+  let workspaceReads = 0;
+  const localWorkspace = demoWorkspace();
+  await context.route('**/api/workspace/merge', (route) =>
+    route.fulfill({
+      status: 401,
+      json: { error: 'Sign in to access ITZ Studio.' },
+    }),
+  );
+  await context.route('**/api/workspace', async (route) => {
+    if (route.request().method() === 'GET') {
+      workspaceReads++;
+      await route.fulfill({ json: { data: null, version: 0 } });
+      return;
+    }
+    await route.fulfill({ json: { version: 1 } });
+  });
+  await page.addInitScript(
+    (data) => localStorage.setItem('itz-studio-local-v1', JSON.stringify(data)),
+    localWorkspace,
+  );
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Sign in to ITZ Studio' })).toBeVisible();
+  await expect(page.locator('.auth-message')).toContainText('Sign in to access ITZ Studio.');
+  expect(workspaceReads).toBe(0);
+  expect(
+    await page.evaluate(
+      () => JSON.parse(localStorage.getItem('itz-studio-local-v1') || '{}').documents[0].number,
+    ),
+  ).toBe(localWorkspace.documents[0].number);
+});
+
 test('admin login imports local records into the shared cloud workspace once', async ({
   page,
   context,
