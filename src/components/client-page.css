@@ -162,6 +162,17 @@
   padding: 24px 16px;
   box-shadow: none;
 }
+/* Public delivery needs AA body contrast without changing the studio templates. */
+@media screen {
+  .client-page .document p,
+  .client-page .document small,
+  .client-page .document-topline,
+  .client-page .document-id > strong,
+  .client-page .document-parties,
+  .client-page .document-footer {
+    color: #526575;
+  }
+}
 .client-page .document table {
   width: 100%;
   table-layout: fixed;

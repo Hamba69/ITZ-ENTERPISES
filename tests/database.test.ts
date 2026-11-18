@@ -197,6 +197,12 @@ test('client links isolate documents, freeze receipts and enforce anonymous limi
     const path=`${one}/${gallery}/00000000-0000-4000-8000-000000000003.jpg`;
     await db.query('insert into public.itz_gallery_media(owner_id,gallery_id,kind,path,width,height,bytes,ready) values ($1,$2,$3,$4,800,500,1000,true)',[one,gallery,'image',path]);
     await db.query('update public.itz_client_links set gallery_id=$1',[gallery]);
+    await db.exec(`set role authenticated; set request.jwt.claim.sub='${two}';`);
+    await assert.rejects(()=>db.query('insert into public.itz_gallery_media(owner_id,gallery_id,kind,path,width,height,bytes) values ($1,$2,$3,$4,800,500,1000)',[one,gallery,'image',`${one}/${gallery}/00000000-0000-4000-8000-000000000004.jpg`]),/row-level security/);
+    await db.exec(`reset role;`);
+    for(let i=0;i<39;i++)await db.query("insert into public.itz_gallery_media(owner_id,gallery_id,kind,path,width,height,bytes) values ($1,$2,'image',$1::uuid::text||'/'||$2::uuid::text||'/'||gen_random_uuid()::text||'.jpg',800,500,1000)",[one,gallery]);
+    await assert.rejects(()=>db.query("insert into public.itz_gallery_media(owner_id,gallery_id,kind,path,width,height,bytes) values ($1,$2,'image',$1::uuid::text||'/'||$2::uuid::text||'/'||gen_random_uuid()::text||'.jpg',800,500,1000)",[one,gallery]),/capacity/);
+    await assert.rejects(()=>db.query('update public.itz_gallery_media set bytes=15000000 where gallery_id=$1',[gallery]),/capacity/);
     await db.query("select set_config('request.headers',$1,false)",[JSON.stringify({'x-client-link-hash':hash})]);
     await db.exec('set role anon;');
     const allowed=async()=>(await db.query<{ok:boolean}>('select public.itz_can_read_media($1) ok',[path])).rows[0].ok;
