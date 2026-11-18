@@ -39,15 +39,11 @@ npm start
 
 Issued documents retain snapshots of the company, client and prices. Editing your business settings or client book does not rewrite existing invoices. Use **Edit document** to revise an issued or paid invoice or quotation; its status and recorded payments remain in place, and the previous version is added to its audit trail. Drafts can be deleted. An invoice with payments cannot be voided until erroneous entries are corrected. Audit history is stored with workspace data and is not cryptographically tamper-proof.
 
-## Local, sample and cloud workspaces
+## One shared cloud workspace
 
-**Local mode** saves to this browser's local storage and does not sync to other devices. Export JSON backups regularly; clearing browser data removes local records. Other tabs cannot silently overwrite newer local data. Unreadable stored data is left intact and saving is blocked until an explicit valid backup restore. A raw backup export is available for recovery.
+Supabase is the only workspace backend. Both authorised administrators open the same company records on every device. Local, sample and separate link-based workspace modes have been removed. Loading failures block editing with a retry action; failed saves retain the form and never save business records to browser storage. Version checks reject stale concurrent writes. Reopen or refresh the cloud workspace to see another device's latest changes.
 
-**Sample mode** is an explicitly labelled, temporary workspace. Its fictional customers use example.com addresses. It does not overwrite local or cloud records and is discarded on reload. The materials and example prices are derived from the original concept; sample documents are not actual trading records.
-
-**Cloud mode** uses one shared Supabase workspace for both allowlisted admins. After sign-in, the app opens that workspace automatically, so cloud records are available on every device and to either admin. On a device's first cloud sign-in, its local records are merged into the shared workspace without replacing existing records. Each device must sign in once after the shared-workspace setup to import its browser-local data. Conflicting IDs, document numbers or company settings stop the merge; the local data is left intact and cloud data is not overwritten. Keep local backups until the sync has completed successfully.
-
-**Shared-link mode** creates a database-backed copy of the current workspace and gives an authenticated admin a link to open the same data on other devices. Every saved change is written to Supabase, including post-issue document revisions, payments, clients, expenses and settings. Version checks reject stale saves rather than silently overwriting newer changes. The app's link APIs require one of the two allowlisted admin accounts, and direct anonymous RPC access is disabled. Keep links private because they identify the shared workspace.
+Existing browser records are preserved. On each old device, sign in and choose **Settings ? Import legacy device records** to merge them into the cloud explicitly. Conflicting IDs, document numbers or company settings stop the merge without changing either source. There is no automatic import or new local saving. Keep old backups until import is verified. Legacy separate workspace copies remain in the database for administrator recovery, but their APIs and RPC permissions are retired. Document-specific client links remain available.
 
 ## Administrator access
 
@@ -57,10 +53,10 @@ Create or invite each user from the Supabase Dashboard's Authentication user man
 
 ## Finish the Supabase setup
 
-The app uses project `rmmwkuihqmezwdugttsr`. Its Auth endpoint responds, but the hosted workspace table was unavailable during setup. **The remote migrations have not been applied, and live database persistence has not been verified.** The app itself uses only the publishable key; the one-time shared-admin setup script requires a temporary service-role key.
+The app uses project `rmmwkuihqmezwdugttsr`. On 18 November 2026 its Auth endpoint responded and both configured admins had the same shared-owner metadata. The workspace Data API returned HTTP 404 / PGRST205 (table absent from the schema cache); the shared-workspace and client-link tables also returned 404. The available CLI account received HTTP 403 for database queries. **Hosted migration state and live database persistence remain unverified.** The app itself uses only the publishable key; the one-time shared-admin setup script requires a temporary service-role key.
 
 1. Open the SQL Editor for the supplied Supabase project.
-2. Run, once each and in this order, the complete contents of [`supabase/migrations/20261101160933_itz_business_workspace.sql`](supabase/migrations/20261101160933_itz_business_workspace.sql), [`supabase/migrations/20261103100000_itz_shared_link_workspaces.sql`](supabase/migrations/20261103100000_itz_shared_link_workspaces.sql), [`supabase/migrations/20261118031149_itz_client_links.sql`](supabase/migrations/20261118031149_itz_client_links.sql), [`supabase/migrations/20261118035044_itz_client_isolation.sql`](supabase/migrations/20261118035044_itz_client_isolation.sql), and [`supabase/migrations/20261118071120_itz_shared_workspace_owner_isolation.sql`](supabase/migrations/20261118071120_itz_shared_workspace_owner_isolation.sql). The workspace migration enables the shared owner claim for both admins; the later migrations keep links, comments, galleries, receipts and media under that same owner. The storage migration creates a private bucket. These scripts do not touch unrelated business tables.
+2. Run, once each and in this order, the complete contents of [`supabase/migrations/20261101160933_itz_business_workspace.sql`](supabase/migrations/20261101160933_itz_business_workspace.sql), [`supabase/migrations/20261103100000_itz_shared_link_workspaces.sql`](supabase/migrations/20261103100000_itz_shared_link_workspaces.sql), [`supabase/migrations/20261118031149_itz_client_links.sql`](supabase/migrations/20261118031149_itz_client_links.sql), [`supabase/migrations/20261118035044_itz_client_isolation.sql`](supabase/migrations/20261118035044_itz_client_isolation.sql), [`supabase/migrations/20261118071120_itz_shared_workspace_owner_isolation.sql`](supabase/migrations/20261118071120_itz_shared_workspace_owner_isolation.sql), and [`supabase/migrations/20261118091714_itz_cloud_only.sql`](supabase/migrations/20261118091714_itz_cloud_only.sql). The workspace migration enables the shared owner claim for both admins; the later migrations keep links, comments, galleries, receipts and media under that same owner. The storage migration creates a private bucket. These scripts do not touch unrelated business tables.
 3. Enable email/password sign-in and disable public sign-ups. Create or invite both configured admins. Configure SMTP for invitations and password resets.
 4. With the temporary service-role key available locally, run `npm run setup:shared-admins`. Remove the key from `.env.local` afterward, then sign out and back in for both accounts.
 5. Set `BUSINESS_ADMIN_EMAIL` and `TECH_ADMIN_EMAIL` in the Vercel Production environment (and Preview/Development if used), then redeploy. Set the Supabase Auth Site URL and callback URLs for local and deployed origins.
@@ -93,20 +89,20 @@ The Supabase URL and publishable key are public client configuration values; the
 
 Before relying on cloud accounts in the deployed app:
 
-1. Apply the migration and complete the Supabase Auth setup in [Finish the Supabase setup](#finish-the-supabase-setup). No remote migration has been applied yet.
+1. Apply the migration and complete the Supabase Auth setup in [Finish the Supabase setup](#finish-the-supabase-setup). Remote migration state has not been verified.
 2. Set Supabase Auth **Site URL** to the production HTTPS origin.
 3. Add `https://your-production-domain/auth/callback` and `https://your-production-domain/auth/callback?recovery=1` to Supabase's allowed redirect URLs. Add the exact Vercel preview callback URLs you intend to use as well.
 4. Set all six environment variables above in Vercel's **Development**, **Preview** and **Production** environments as appropriate, then redeploy.
 5. Confirm both admin users have the shared-workspace app metadata by running `npm run setup:shared-admins` locally, then sign in on two devices and verify local import, shared save/reload and access by both admins. Verify that the business admin receives 403 from `/api/admin/infrastructure` and that the technical admin can view deployment metadata and database health.
 
-Local mode does not require the database migration, but shared cloud persistence and shared-link storage do. The Vercel deployment itself does not apply Supabase migrations. Browser-local data on a device cannot be read remotely; each device must visit the updated app while signed in for its local data to be offered for merge.
+Cloud access requires all six migrations. Vercel deployment does not apply them. Browser-local data cannot be read remotely; use the explicit legacy import action on each old device after cloud setup.
 
 ## Data design and boundaries
 
 - Next.js App Router, TypeScript, React, Supabase SSR clients, Zod validation, Decimal.js calculations, jsPDF and AutoTable.
-- The database stores a JSONB business aggregate per authenticated owner or per shared-link token. This is a deliberate small-workspace design: related changes save atomically and exports use the same validated format. It is not a high-volume accounting database.
+- The database stores a JSONB business aggregate under the shared owner assigned to both administrators. This is a deliberate small-workspace design: related changes save atomically and exports use the same validated format. It is not a high-volume accounting database.
 - `owner_id` is a primary key and foreign key to Auth users. All access uses the authenticated user's session. RLS restricts SELECT/INSERT/UPDATE to that owner. Anonymous access and TRUNCATE privileges are explicitly revoked.
-- `itz_save_workspace` is security-invoker, uses an empty search path and compares the expected version before updating. The shared-link RPCs use narrowly scoped security-definer functions with an empty search path, are granted only to authenticated users, and require a SHA-256 token hash. Direct table access and anonymous RPC execution are revoked. No service-role key is used.
+- `itz_save_workspace` is security-invoker, uses an empty search path and compares the expected version before updating. The retired workspace-copy RPCs have no application-role execution grants. Missing shared-owner claims fail closed instead of creating a personal workspace. No service-role key is used.
 - Application/API validation covers required fields, finite bounded numbers, unique document numbers/IDs, valid dates, currency precision, rectangular schedules and overpayments. The API additionally checks request origin and size. Database constraints enforce ownership, basic aggregate format, version and payload size; the full business schema is validated by the application.
 - A workspace is limited to approximately 5 MB. The JSON format is versioned. For high-volume use, evolve to normalised, paginated records and a migration/import process.
 - Reports describe recorded cash movement, not statutory accounts, tax filing or inventory stock levels. Quotes, drafts and void documents are excluded from receivables.
@@ -135,9 +131,9 @@ New links are bound to the document's complete client snapshot. A change to clie
 
 These remain private **bearer links**, not verified client identities: anyone possessing a valid URL (including someone it is forwarded to) can read that document. Only share the URL with the intended recipient and put client-appropriate content in that document/gallery. Requiring proof of identity would require changing the agreed no-login design. Already downloaded information cannot be recalled; already-issued Storage URLs remain valid until expiry.
 
-In **cloud mode**, open an issued invoice or quotation and choose **Client link**. The first click creates one private URL and opens the client page; subsequent clicks open its management dialog. Local, sample, shared-workspace and draft documents cannot publish links. The dialog includes copy/open, WhatsApp, an email draft, expiry, view statistics, regeneration, revocation, receipts synchronisation, comments and gallery management. Email/WhatsApp actions only open drafts; this app does not send messages.
+In **cloud mode**, open an issued invoice or quotation and choose **Client link**. The first click creates one private URL and opens the client page; subsequent clicks open its management dialog. Draft documents cannot publish links. The dialog includes copy/open, WhatsApp, an email draft, expiry, view statistics, regeneration, revocation, receipts synchronisation, comments and gallery management. Email/WhatsApp actions only open drafts; this app does not send messages.
 
-Apply these one-time migrations **in this order** in the hosted SQL Editor:
+Apply all six migrations in filename order as listed in **Finish the Supabase setup**. The initial client-link dependencies are:
 
 1. `supabase/migrations/20261101160933_itz_business_workspace.sql`
 2. `supabase/migrations/20261103100000_itz_shared_link_workspaces.sql`
@@ -157,7 +153,7 @@ Storage stays private. The public page delivers media through a **same-origin st
 
 For browser fixtures, Playwright starts the local production server with runtime `ITZ_CLIENT_FIXTURES=1`; `/c/fixture` otherwise returns 404. It is also blocked when `VERCEL` is set or `ITZ_DEPLOYMENT=production`. **Never set `ITZ_CLIENT_FIXTURES` on a hosted/public deployment.** Set `ITZ_DEPLOYMENT=production` on non-Vercel production hosts. Stop any existing localhost server before `npm run test:e2e`, so Playwright starts the fixture-enabled server. Fixture illustrations and sample documents are test-only and are never published to Supabase.
 
-Hosted acceptance still required: apply all four migrations, then use two owner accounts to verify isolation, receipt correction/backfill, cross-device comments/unread badges, upload limits, image resizing/video posters, attach a gallery to two documents, and remove it again. Check anonymous direct Storage/table access, signing without a hash and with another link's hash, and media fetches after revocation, expiry, regeneration, voiding and document deletion. Verify video range requests, especially MOV playback in each supported browser. Run Supabase Security Advisors after setup. No hosted persistence, Storage access or email delivery is claimed by the local test results.
+Hosted acceptance still required: apply all six migrations, then use both admin accounts to verify shared access and an unauthorised account to verify isolation, receipt correction/backfill, cross-device comments/unread badges, upload limits, image resizing/video posters, attach a gallery to two documents, and remove it again. Check anonymous direct Storage/table access, signing without a hash and with another link's hash, and media fetches after revocation, expiry, regeneration, voiding and document deletion. Verify video range requests, especially MOV playback in each supported browser. Run Supabase Security Advisors after setup. No hosted persistence, Storage access or email delivery is claimed by the local test results.
 
 ## Source guide
 

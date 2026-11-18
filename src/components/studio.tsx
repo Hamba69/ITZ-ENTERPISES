@@ -24,7 +24,6 @@ import {
   Search,
   Settings,
   ShieldCheck,
-  Sparkles,
   Server,
   Trash2,
   Users,
@@ -39,7 +38,6 @@ import {
   auditDocumentChange,
   csv,
   currencies,
-  demoWorkspace,
   downloadFile,
   emptyWorkspace,
   formatDate,
@@ -64,7 +62,6 @@ import { ClientLinkDialog, emptyLinks, linkAction, type LinkState } from './clie
 import { DocumentEditor } from './document-editor';
 import { CompanyForm, RecordModal, type RecordForm } from './record-forms';
 
-type Mode = 'local' | 'demo' | 'cloud' | 'shared';
 type Page =
   | 'Overview'
   | 'Invoices'
@@ -87,21 +84,6 @@ const navigation = [
   { label: 'Templates', icon: Palette },
 ] as const;
 const localKey = 'itz-studio-local-v1';
-const localCloudImportKey = 'itz-studio-cloud-import-v1';
-async function localDataFingerprint(value: string) {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-function hasWorkspaceData(workspace: Workspace) {
-  const emptyCompany = emptyWorkspace().company;
-  return (
-    workspace.clients.length > 0 ||
-    workspace.products.length > 0 ||
-    workspace.documents.length > 0 ||
-    workspace.expenses.length > 0 ||
-    JSON.stringify(workspace.company) !== JSON.stringify(emptyCompany)
-  );
-}
 const auditFieldLabels: Record<string, string> = {
   number: 'Document number',
   kind: 'Document type',
@@ -127,7 +109,7 @@ const auditFieldLabels: Record<string, string> = {
 export function Studio() {
   const [w, setW] = useState<Workspace>(emptyWorkspace);
   const [ready, setReady] = useState(false);
-  const [mode, setMode] = useState<Mode>('local');
+  const [cloudLoaded, setCloudLoaded] = useState(false);
   const [clientLinks, setClientLinks] = useState<LinkState>(emptyLinks);
   const [clientLinkDocument, setClientLinkDocument] = useState<Invoice | null>(null);
   const [linkBusy, setLinkBusy] = useState(false);
@@ -138,13 +120,13 @@ export function Studio() {
     setClientLinks(body);
   }
   useEffect(() => {
-    if (mode !== 'cloud') {
+    if (!cloudLoaded) {
       setClientLinks(emptyLinks);
       setClientLinkDocument(null);
       return;
     }
     void refreshClientLinks().catch((e) => setNotice({ text: e.message, error: true }));
-  }, [mode]);
+  }, [cloudLoaded]);
   async function openClientLink(doc: Invoice) {
     const existing = clientLinks.links.find((l) => l.document_id === doc.id);
     if (existing) {
@@ -174,8 +156,6 @@ export function Studio() {
   const [version, setVersion] = useState(0);
   const [user, setUser] = useState('');
   const [role, setRole] = useState<'business_admin' | 'technical_admin' | null>(null);
-  const [sharedToken, setSharedToken] = useState('');
-  const [sharedLink, setSharedLink] = useState('');
   const [page, setPage] = useState<Page>('Overview');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
@@ -195,37 +175,11 @@ export function Studio() {
   const savingRef = useRef(false);
   const importRef = useRef<HTMLInputElement>(null);
   const [help, setHelp] = useState(false);
-  const localSnapshot = useRef<string | null>(null);
-  const localCorrupt = useRef(false);
   const recoveryFlow = useRef(false);
   const selectedDoc = w.documents.find((d) => d.id === selected);
   const notify = (text: string, error = false) => setNotice({ text, error });
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const shared = new URLSearchParams(window.location.hash.slice(1)).get('workspace');
-    const loadLocal = () => {
-      try {
-        const raw = localStorage.getItem(localKey);
-        localSnapshot.current = raw;
-        if (raw) {
-          const parsed = workspaceSchema.safeParse(JSON.parse(raw));
-          if (parsed.success) setW(parsed.data);
-          else {
-            localCorrupt.current = true;
-            notify(
-              'Saved local data could not be read. It has been left intact. Export a raw device backup in Settings, then restore a valid backup.',
-              true,
-            );
-          }
-        }
-      } catch {
-        localCorrupt.current = true;
-        notify(
-          'Browser storage is unavailable or unreadable. Do not rely on local saving until this is resolved.',
-          true,
-        );
-      }
-    };
     if (params.has('recovery')) {
       recoveryFlow.current = true;
       setAuthMode('update');
@@ -240,36 +194,6 @@ export function Studio() {
     }
     if (params.has('recovery') || params.has('confirmed') || params.has('auth_error'))
       window.history.replaceState({}, '', window.location.pathname);
-    if (shared && /^[A-Za-z0-9_-]{43}$/.test(shared)) {
-      setSharedToken(shared);
-      setSharedLink(window.location.href);
-      setMode('shared');
-      setW(emptyWorkspace());
-      void (async () => {
-        try {
-          const res = await fetch('/api/shared-workspace', {
-            cache: 'no-store',
-            headers: { Authorization: `Bearer ${shared}` },
-          });
-          const body = await res.json();
-          if (!res.ok) throw new Error(body.error);
-          setW(workspaceSchema.parse(body.data));
-          setVersion(body.version);
-        } catch (e) {
-          notify(e instanceof Error ? e.message : 'Could not open the shared workspace.', true);
-        } finally {
-          setReady(true);
-        }
-      })();
-    } else if (shared) {
-      setMode('shared');
-      setW(emptyWorkspace());
-      notify('This shared workspace link is invalid.', true);
-      setReady(true);
-    } else {
-      loadLocal();
-      setReady(true);
-    }
     const client = createClient();
     const {
       data: { subscription },
@@ -280,7 +204,12 @@ export function Studio() {
       } else if (event === 'SIGNED_OUT') {
         setRole(null);
         setUser('');
-        setMode('local');
+        setCloudLoaded(false);
+        setW(emptyWorkspace());
+        setVersion(0);
+        setEditor(null);
+        setSelected(null);
+        setRecordForm(null);
         setAuthMode('signin');
         setAuthError('Sign in with an authorized admin account to continue.');
         setAuthOpen(true);
@@ -303,7 +232,6 @@ export function Studio() {
         setRole(profile.role);
         setUser(profile.email || '');
         if (!recoveryFlow.current) {
-          setAuthOpen(false);
           setAuthError('');
           await openCloud();
         }
@@ -311,6 +239,8 @@ export function Studio() {
         if (!active) return;
         setAuthOpen(true);
         setAuthError('Could not verify the administrator account. Please retry.');
+      } finally {
+        if (active) setReady(true);
       }
     })();
     return () => {
@@ -339,9 +269,13 @@ export function Studio() {
     setFilter('all');
     setMobile(false);
   };
-  async function commit(next: Workspace, replacing = false) {
+  async function commit(next: Workspace) {
     let receiptWarning: string | undefined;
     if (savingRef.current) return false;
+    if (!cloudLoaded) {
+      notify('Open the cloud workspace before saving.', true);
+      return false;
+    }
     const parsed = workspaceSchema.safeParse(next);
     if (!parsed.success) {
       notify(parsed.error.issues[0].message, true);
@@ -350,7 +284,7 @@ export function Studio() {
     savingRef.current = true;
     setSaving(true);
     try {
-      if (mode === 'cloud') {
+      if (cloudLoaded) {
         const res = await fetch('/api/workspace', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -361,47 +295,9 @@ export function Studio() {
         setVersion(body.version);
         receiptWarning = body.receiptWarning;
         void refreshClientLinks().catch(() => {});
-      } else if (mode === 'shared') {
-        const res = await fetch('/api/shared-workspace', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${sharedToken}`,
-          },
-          body: JSON.stringify({ data: parsed.data, version }),
-        });
-        const body = await res.json();
-        if (!res.ok) throw new Error(body.error);
-        setVersion(body.version);
-      } else if (mode === 'local') {
-        const write = () => {
-          if (localCorrupt.current && !replacing)
-            throw new Error('Recover your unreadable local data in Settings before saving.');
-          if (localStorage.getItem(localKey) !== localSnapshot.current)
-            throw new Error(
-              'Local records changed in another tab. Export a backup of this view, then reload before saving.',
-            );
-          const raw = JSON.stringify(parsed.data);
-          if (new Blob([raw]).size > 5_000_000)
-            throw new Error('Workspace exceeds 5 MB. Export an archive before adding more data.');
-          localStorage.setItem(localKey, raw);
-          localSnapshot.current = raw;
-          localCorrupt.current = false;
-        };
-        if (navigator.locks) await navigator.locks.request(localKey, write);
-        else write();
       }
       setW(parsed.data);
-      notify(
-        receiptWarning ||
-          (mode === 'cloud'
-            ? 'Saved to your cloud workspace.'
-            : mode === 'shared'
-              ? 'Saved to the shared workspace.'
-              : mode === 'demo'
-                ? 'Updated sample workspace.'
-                : 'Saved on this device.'),
-      );
+      notify(receiptWarning || 'Saved to the shared cloud workspace.', !!receiptWarning);
       return true;
     } catch (e) {
       notify(e instanceof Error ? e.message : 'Save failed. Please try again.', true);
@@ -418,147 +314,62 @@ export function Studio() {
   }
   async function openCloud() {
     try {
-      const localRaw = localStorage.getItem(localKey);
-      const localHash = await localDataFingerprint(localRaw || '');
-      let localImportWarning = '';
-      let localImported = false;
-      if (localRaw) {
-        let localJson: unknown = null;
-        try {
-          localJson = JSON.parse(localRaw);
-        } catch {
-          localImportWarning =
-            'Local data could not be validated. It remains on this device and was not synced.';
-        }
-        const parsedLocal = localImportWarning ? null : workspaceSchema.safeParse(localJson);
-        const localData = parsedLocal?.success ? parsedLocal.data : null;
-        if (localData) {
-          const importedHash = localStorage.getItem(localCloudImportKey);
-          if (hasWorkspaceData(localData) && importedHash !== localHash) {
-            const mergeResponse = await fetch('/api/workspace/merge', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ data: localData }),
-            });
-            const mergeBody = await mergeResponse.json();
-            if (mergeResponse.ok) {
-              localStorage.setItem(localCloudImportKey, localHash);
-              localImported = mergeBody.merged === true;
-            } else if (mergeResponse.status === 401) {
-              promptAdminSignIn(mergeBody.error);
-              return;
-            } else if (mergeResponse.status === 409) {
-              localImportWarning = mergeBody.error || 'Local records could not be merged.';
-            } else throw new Error(mergeBody.error || 'Could not sync local records.');
-          } else if (!hasWorkspaceData(localData)) {
-            localStorage.setItem(localCloudImportKey, localHash);
-          }
-        } else if (!localImportWarning) {
-          localImportWarning =
-            'Local data could not be validated. It remains on this device and was not synced.';
-        }
-      } else {
-        localStorage.setItem(localCloudImportKey, localHash);
-      }
       const res = await fetch('/api/workspace', { cache: 'no-store' });
       const body = await res.json();
       if (res.status === 401) {
+        setCloudLoaded(false);
         promptAdminSignIn(body.error);
         return;
       }
-      if (!res.ok) throw new Error(body.error);
-      const next = body.data ? workspaceSchema.parse(body.data) : emptyWorkspace();
-      setW(next);
+      if (!res.ok) throw new Error(body.error || 'Could not load the cloud workspace.');
+      setW(body.data ? workspaceSchema.parse(body.data) : emptyWorkspace());
       setVersion(body.version);
-      setSharedToken('');
-      setSharedLink('');
-      setMode('cloud');
-      const url = new URL(window.location.href);
-      url.hash = '';
-      window.history.replaceState({}, '', url);
+      setCloudLoaded(true);
       setAuthOpen(false);
-      notify(
-        localImportWarning ||
-          (localImported
-            ? 'This device’s saved records were synced to the shared cloud workspace.'
-            : 'Shared cloud workspace opened. This device’s saved records are preserved.'),
-        !!localImportWarning,
-      );
+      setAuthError('');
+      window.history.replaceState({}, '', window.location.pathname);
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Could not open cloud workspace.';
-      notify(message, true);
+      setCloudLoaded(false);
+      setAuthOpen(true);
       setAuthError(message);
     }
   }
-  function openLocal() {
+  async function importLegacyDeviceData() {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
     try {
       const raw = localStorage.getItem(localKey);
-      localSnapshot.current = raw;
-      setW(raw ? workspaceSchema.parse(JSON.parse(raw)) : emptyWorkspace());
-      setSharedToken('');
-      setSharedLink('');
-      setMode('local');
-      const url = new URL(window.location.href);
-      url.hash = '';
-      window.history.replaceState({}, '', url);
-      go('Overview');
-    } catch {
-      notify('Could not read local data. Your stored data has been left intact.', true);
-    }
-  }
-  async function createSharedWorkspace() {
-    if (
-      !window.confirm(
-        'Anyone with the new link can read and edit all records copied into it. Continue?',
-      )
-    )
-      return;
-    try {
-      const res = await fetch('/api/shared-workspace', {
+      if (!raw) {
+        notify('No legacy records were found on this device.');
+        return;
+      }
+      const data = workspaceSchema.parse(JSON.parse(raw));
+      const res = await fetch('/api/workspace/merge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: w }),
+        body: JSON.stringify({ data }),
       });
       const body = await res.json();
-      if (!res.ok) throw new Error(body.error);
-      if (
-        typeof body.token !== 'string' ||
-        !/^[A-Za-z0-9_-]{43}$/.test(body.token) ||
-        !Number.isSafeInteger(body.version) ||
-        body.version < 1
-      )
-        throw new Error('Supabase returned an invalid shared workspace link.');
-      const url = new URL(window.location.href);
-      url.hash = new URLSearchParams({ workspace: body.token }).toString();
-      window.history.replaceState({}, '', url);
-      setSharedToken(body.token);
-      setSharedLink(url.href);
-      setVersion(body.version);
-      setMode('shared');
-      notify('Shared workspace created in Supabase. Copy the link to open it on other devices.');
+      if (!res.ok) throw new Error(body.error || 'Could not import legacy records.');
+      await openCloud();
+      notify(
+        body.receiptWarning || 'Legacy records imported. The original device backup is preserved.',
+        !!body.receiptWarning,
+      );
     } catch (e) {
-      notify(e instanceof Error ? e.message : 'Could not create a shared workspace.', true);
-    }
-  }
-  async function copySharedLink() {
-    try {
-      await navigator.clipboard.writeText(sharedLink);
-      notify('Workspace link copied.');
-    } catch {
-      notify('Copy failed. Select and copy the workspace link shown in Settings.', true);
+      notify(e instanceof Error ? e.message : 'Could not import legacy records.', true);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
   }
   const start = (kind: Invoice['kind'] = 'invoice', template?: Invoice['template']) =>
     setEditor({ ...newDocument(w, kind), ...(template ? { template } : {}) });
   async function saveDocument(d: Invoice) {
     const existing = w.documents.find((x) => x.id === d.id);
-    const savedDocument = existing
-      ? auditDocumentChange(
-          existing,
-          d,
-          user || (mode === 'demo' ? 'Sample workspace' : 'This device'),
-        )
-      : d;
+    const savedDocument = existing ? auditDocumentChange(existing, d, user || 'Administrator') : d;
     return commit({
       ...w,
       documents: w.documents.some((x) => x.id === d.id)
@@ -703,7 +514,7 @@ export function Studio() {
               <td>
                 <button className="table-link" onClick={() => setSelected(d.id)}>
                   {d.number}
-                  {mode === 'cloud' && clientLinks.links.some((l) => l.document_id === d.id) && (
+                  {cloudLoaded && clientLinks.links.some((l) => l.document_id === d.id) && (
                     <small className="badge">
                       Client link
                       {clientLinks.links.find((l) => l.document_id === d.id)?.unread
@@ -768,7 +579,7 @@ export function Studio() {
     );
   return (
     <div className={'app-shell ' + (sidebarCollapsed ? 'sidebar-collapsed' : '')}>
-      <aside className={'sidebar ' + (mobile ? 'open' : '')}>
+      <aside className={'sidebar ' + (mobile ? 'open' : '')} inert={!cloudLoaded || authOpen}>
         <a
           href="#"
           className="brand-link"
@@ -853,13 +664,7 @@ export function Studio() {
           </button>
           <div className="sidebar-footer">
             <span className="live-dot" />
-            {mode === 'cloud'
-              ? 'CLOUD WORKSPACE'
-              : mode === 'shared'
-                ? 'SHARED WORKSPACE'
-                : mode === 'demo'
-                  ? 'SAMPLE WORKSPACE'
-                  : 'LOCAL WORKSPACE'}
+            CLOUD WORKSPACE
             <small>v1.0</small>
           </div>
         </div>
@@ -871,7 +676,7 @@ export function Studio() {
           onClick={() => setMobile(false)}
         />
       )}
-      <div className="main-shell">
+      <div className="main-shell" inert={!cloudLoaded || authOpen}>
         <header className="topbar">
           <div className="breadcrumb">
             <button
@@ -894,37 +699,10 @@ export function Studio() {
             <strong>{editor ? 'Document studio' : page}</strong>
           </div>
           <div className="topbar-right">
-            <span className={'storage-state ' + (mode === 'demo' ? 'sample' : '')}>
+            <span className="storage-state">
               <span />
-              {saving
-                ? 'Saving…'
-                : mode === 'cloud'
-                  ? 'Cloud connected'
-                  : mode === 'shared'
-                    ? 'Shared link workspace'
-                    : mode === 'demo'
-                      ? 'Sample data'
-                      : 'Saved on this device'}
+              {saving ? 'Saving?' : cloudLoaded ? 'Cloud connected' : 'Cloud unavailable'}
             </span>
-            {mode === 'shared' ? (
-              <button
-                className="button small"
-                onClick={copySharedLink}
-                disabled={!!editor || saving}
-              >
-                <Copy size={15} />
-                Copy workspace link
-              </button>
-            ) : mode === 'local' ? (
-              <button className="button small" onClick={openCloud} disabled={!!editor || saving}>
-                <Cloud size={15} />
-                Connect cloud
-              </button>
-            ) : mode === 'demo' ? (
-              <button className="button small" onClick={openLocal} disabled={!!editor || saving}>
-                Exit sample workspace
-              </button>
-            ) : null}
             {role && (
               <div className="admin-account">
                 <span>{role === 'technical_admin' ? 'Technical admin' : 'Business admin'}</span>
@@ -956,12 +734,6 @@ export function Studio() {
           />
         ) : (
           <main className="main-content">
-            {mode === 'demo' && (
-              <div className="demo-banner">
-                <Sparkles size={16} />
-                You’re exploring sample data. Your real local and cloud records are separate.
-              </div>
-            )}
             {page === 'Overview' && (
               <>
                 <SectionTitle
@@ -1219,21 +991,6 @@ export function Studio() {
                         <ChevronRight size={16} />
                       </button>
                     ))}
-                    {mode === 'local' && (
-                      <div className="sample-invite">
-                        <Sparkles size={18} />
-                        <p>Want to see the full picture?</p>
-                        <button
-                          className="text-button"
-                          onClick={() => {
-                            setW(demoWorkspace());
-                            setMode('demo');
-                          }}
-                        >
-                          Explore sample workspace <ArrowUpRight size={14} />
-                        </button>
-                      </div>
-                    )}
                   </section>
                 </div>
               </>
@@ -1754,68 +1511,25 @@ export function Studio() {
                 />
                 <div className="settings-grid">
                   <CompanyForm
-                    key={mode}
+                    key={version}
                     company={w.company}
                     onSave={(company) => commit({ ...w, company })}
                   />
                   <div className="settings-side">
                     <section className="panel">
                       <Cloud size={26} className="blue-icon" />
-                      <h2>Your workspace</h2>
+                      <h2>Shared cloud workspace</h2>
                       <p className="muted">
-                        {mode === 'shared'
-                          ? 'Changes save to Supabase and are available across devices using the workspace link.'
-                          : mode === 'cloud'
-                            ? `Signed in as ${user}. Changes save to your private Supabase workspace.`
-                            : mode === 'demo'
-                              ? 'You are exploring temporary sample data.'
-                              : 'Local mode saves to this browser on this device. Back up regularly or connect your cloud account.'}
+                        Signed in as {user}. All authorised administrators use the same Supabase
+                        workspace on every device.
                       </p>
-                      {mode !== 'cloud' && (
-                        <button className="button primary" onClick={openCloud}>
-                          Connect Supabase account
-                        </button>
-                      )}
                       <p className="small-text muted">
-                        {mode === 'shared'
-                          ? 'Anyone holding this link can read, edit and export all workspace records. There is no user-level access control yet.'
-                          : 'Cloud mode requires the included database migration. Each account owns a private business workspace.'}
+                        An internet connection is required. Saves are confirmed by the database;
+                        conflicting edits must be reloaded before saving.
                       </p>
-                      {mode === 'shared' ? (
-                        <>
-                          <Field label="Shareable workspace link">
-                            <input
-                              aria-label="Workspace link"
-                              readOnly
-                              value={sharedLink}
-                              onFocus={(event) => event.currentTarget.select()}
-                            />
-                          </Field>
-                          <button
-                            className="button"
-                            onClick={copySharedLink}
-                            disabled={!sharedLink}
-                          >
-                            <Copy size={16} />
-                            Copy workspace link
-                          </button>
-                        </>
-                      ) : mode !== 'demo' ? (
-                        <>
-                          <p className="small-text muted">
-                            Create a separate database copy of this workspace. Anyone with its link
-                            can read and edit the copied records.
-                          </p>
-                          <button
-                            className="button primary"
-                            onClick={createSharedWorkspace}
-                            disabled={saving}
-                          >
-                            <Cloud size={16} />
-                            Create shareable workspace link
-                          </button>
-                        </>
-                      ) : null}
+                      <button className="button" onClick={openCloud} disabled={saving}>
+                        Refresh cloud workspace
+                      </button>
                     </section>
                     <section className="panel">
                       <Download size={25} className="blue-icon" />
@@ -1825,24 +1539,13 @@ export function Studio() {
                         it.
                       </p>
                       <div className="stack-actions">
-                        {localCorrupt.current && (
-                          <button
-                            className="button"
-                            onClick={() => {
-                              try {
-                                downloadFile(
-                                  'itz-raw-device-backup.txt',
-                                  localStorage.getItem(localKey) || '',
-                                  'text/plain',
-                                );
-                              } catch {
-                                notify('Browser storage cannot be read.', true);
-                              }
-                            }}
-                          >
-                            Export raw device backup
-                          </button>
-                        )}
+                        <button
+                          className="button"
+                          onClick={importLegacyDeviceData}
+                          disabled={saving}
+                        >
+                          Import legacy device records
+                        </button>
                         <button
                           className="button"
                           onClick={() =>
@@ -1913,10 +1616,10 @@ export function Studio() {
                             const next = workspaceSchema.parse(JSON.parse(await file.text()));
                             if (
                               window.confirm(
-                                `Replace this ${mode} workspace with ${next.documents.length} documents, ${next.clients.length} clients and ${next.expenses.length} expenses? Export your current backup first.`,
+                                `Replace this shared cloud workspace with ${next.documents.length} documents, ${next.clients.length} clients and ${next.expenses.length} expenses? Export your current backup first.`,
                               )
                             )
-                              await commit(next, true);
+                              await commit(next);
                           } catch {
                             notify(
                               'This is not a valid ITZ Studio backup. Nothing was changed.',
@@ -1984,7 +1687,7 @@ export function Studio() {
           <div className="document-actions">
             <span
               title={
-                mode !== 'cloud'
+                !cloudLoaded
                   ? 'Connect your cloud workspace to share a client link.'
                   : selectedDoc.status === 'draft'
                     ? 'Issue this document before creating a client link.'
@@ -1993,13 +1696,13 @@ export function Studio() {
             >
               <button
                 className="button"
-                disabled={mode !== 'cloud' || selectedDoc.status === 'draft' || linkBusy}
+                disabled={!cloudLoaded || selectedDoc.status === 'draft' || linkBusy}
                 onClick={() => openClientLink(selectedDoc)}
               >
                 Client link
               </button>
-              {(mode !== 'cloud' || selectedDoc.status === 'draft') && (
-                <small>{mode !== 'cloud' ? 'Cloud mode only' : 'Issue document first'}</small>
+              {(!cloudLoaded || selectedDoc.status === 'draft') && (
+                <small>{!cloudLoaded ? 'Cloud mode only' : 'Issue document first'}</small>
               )}
             </span>
             <span className={'badge ' + statusOf(selectedDoc)}>{statusOf(selectedDoc)}</span>
@@ -2256,7 +1959,7 @@ export function Studio() {
           </div>
         </Modal>
       )}
-      {clientLinkDocument && mode === 'cloud' && (
+      {clientLinkDocument && cloudLoaded && (
         <ClientLinkDialog
           doc={clientLinkDocument}
           state={clientLinks}
@@ -2274,7 +1977,7 @@ export function Studio() {
                 : 'Sign in to ITZ Studio'
           }
           onClose={() => {
-            if (!role) {
+            if (!role || !cloudLoaded) {
               setAuthError('An authorized administrator sign-in is required.');
               return;
             }
@@ -2365,6 +2068,11 @@ export function Studio() {
                     ? 'Send reset link'
                     : 'Update password'}
             </button>
+            {role && !cloudLoaded && (
+              <button type="button" className="button" disabled={authBusy} onClick={openCloud}>
+                Retry cloud connection
+              </button>
+            )}
             <div className="auth-links">
               <button
                 type="button"
@@ -2405,9 +2113,8 @@ export function Studio() {
             </p>
             <h3>5. Keep your records safe</h3>
             <p>
-              Local mode stores data only in this browser. Export JSON backups in Settings. Cloud
-              mode uses your private Supabase account after the included migration has been applied.
-              Sample mode is separate and temporary.
+              All records save to one shared Supabase workspace. Sign in on any device to access the
+              same records. Export JSON backups or import legacy device records in Settings.
             </p>
             <h3>Document integrity</h3>
             <p>

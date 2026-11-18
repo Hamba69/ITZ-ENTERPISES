@@ -7,7 +7,7 @@ function getWorkspaceOwnerId(user: { id: string; app_metadata?: Record<string, u
     typeof ownerId === 'string' &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ownerId)
     ? ownerId
-    : user.id;
+    : null;
 }
 
 export async function authorizeAdmin() {
@@ -37,11 +37,30 @@ export async function authorizeAdmin() {
     return { ok: false as const, status: 403, message: 'This account is not authorized.' };
   }
 
+  const workspaceOwnerId = getWorkspaceOwnerId(data.user);
+  if (!workspaceOwnerId) {
+    return {
+      ok: false as const,
+      status: 503,
+      message:
+        'Shared cloud workspace is not configured for this account. Contact the administrator.',
+    };
+  }
+  // Database policies use JWT claims; refresh stale claims after administrator setup.
+  const { data: resolvedOwner, error: ownerError } = await client.rpc('itz_workspace_owner_id');
+  if (ownerError || resolvedOwner !== workspaceOwnerId) {
+    return {
+      ok: false as const,
+      status: 503,
+      message:
+        'Shared cloud access is unavailable. Check the database setup, then sign out and sign in again.',
+    };
+  }
   return {
     ok: true as const,
     client,
     user: data.user,
     role,
-    workspaceOwnerId: getWorkspaceOwnerId(data.user),
+    workspaceOwnerId,
   };
 }

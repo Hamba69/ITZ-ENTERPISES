@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { mockCloud } from './cloud-fixture';
 import { demoWorkspace, uid } from '../../src/lib/business';
 
 test.beforeEach(async ({ context }) => {
@@ -13,15 +14,7 @@ test.beforeEach(async ({ context }) => {
       }),
     }),
   );
-  await context.route('**/api/workspace/merge', (route) =>
-    route.fulfill({ json: { version: 0, merged: false } }),
-  );
-  await context.route('**/api/workspace', (route) =>
-    route.fulfill({
-      status: 503,
-      json: { error: 'Cloud workspace unavailable.' },
-    }),
-  );
+  await mockCloud(context);
 });
 
 test('requires an allowlisted sign-in and does not offer public registration', async ({
@@ -213,7 +206,7 @@ test('system numbering is fixed and locked for new documents', async ({ page }) 
   await expect(page.getByLabel('Document number')).toHaveAttribute('readonly', '');
 });
 
-test('clients, catalogue, expenses and separate sample data', async ({ page }) => {
+test('clients, catalogue and expenses persist in cloud', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Clients', exact: true }).click();
   await page.getByRole('button', { name: 'Add client', exact: true }).click();
@@ -233,19 +226,17 @@ test('clients, catalogue, expenses and separate sample data', async ({ page }) =
   await page.getByRole('button', { name: 'Save expense', exact: true }).click();
   await expect(page.locator('.data-table')).toContainText('45,000');
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
-  await page.getByRole('button', { name: 'Explore sample workspace' }).click();
-  await expect(page.locator('.demo-banner')).toBeVisible();
-  await page.getByRole('button', { name: 'Exit sample workspace' }).click();
+  await page.reload();
   await page.getByRole('button', { name: 'Clients', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Real client' })).toBeVisible();
   await expect(page.locator('.client-card')).toHaveCount(1);
 });
 
 test('responsive navigation, template selection and modal keyboard dismissal', async ({ page }) => {
+  await mockCloud(page, demoWorkspace());
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Good work. Clear numbers.' })).toBeVisible();
-  await page.getByRole('button', { name: 'Explore sample workspace' }).click();
   await expect(page.getByRole('heading', { name: 'Receivables health' })).toBeVisible();
   await page.screenshot({ path: 'test-results/mobile-overview.png', fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
@@ -261,8 +252,8 @@ test('responsive navigation, template selection and modal keyboard dismissal', a
 });
 
 test('dashboard screenshot and unauthenticated API protection', async ({ page, request }) => {
+  await mockCloud(page, demoWorkspace());
   await page.goto('/');
-  await page.getByRole('button', { name: 'Explore sample workspace' }).click();
   await expect(page.getByRole('heading', { name: 'Receivables health' })).toBeVisible();
   await expect(
     page.getByRole('img', {
@@ -283,57 +274,29 @@ test('dashboard screenshot and unauthenticated API protection', async ({ page, r
   expect(response.status()).toBe(401);
   const invalid = await request.put('/api/workspace', { data: { data: {}, version: 0 } });
   expect(invalid.status()).toBe(403);
-  expect((await request.get('/api/shared-workspace')).status()).toBe(401);
-  expect((await request.post('/api/shared-workspace', { data: { data: {} } })).status()).toBe(401);
+  expect((await request.get('/api/shared-workspace')).status()).toBe(410);
+  expect((await request.post('/api/shared-workspace', { data: { data: {} } })).status()).toBe(410);
 });
 
-test('share links load and save workspace data through the database API', async ({
+test('all devices open the same cloud workspace without a workspace link', async ({
   page,
   context,
 }) => {
-  const workspace = demoWorkspace();
-  const token = 'a'.repeat(43);
-  let storedWorkspace = workspace;
-  let version = 0;
-  await context.route('**/api/shared-workspace', async (route) => {
-    const request = route.request();
-    if (request.method() === 'POST') {
-      storedWorkspace = request.postDataJSON().data;
-      version = 1;
-      await route.fulfill({ json: { token, version } });
-    } else if (request.method() === 'GET') {
-      expect(request.headers().authorization).toBe(`Bearer ${token}`);
-      await route.fulfill({ json: { data: storedWorkspace, version } });
-    } else {
-      const body = request.postDataJSON();
-      expect(body.version).toBe(version);
-      storedWorkspace = body.data;
-      version += 1;
-      await route.fulfill({ json: { version } });
-    }
-  });
-  await page.addInitScript(
-    (data) => localStorage.setItem('itz-studio-local-v1', JSON.stringify(data)),
-    workspace,
-  );
+  await mockCloud(context, demoWorkspace());
   await page.goto('/');
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  page.once('dialog', (dialog) => dialog.accept());
-  await page.getByRole('button', { name: 'Create shareable workspace link' }).click();
-  const shareLink = page.getByLabel('Workspace link');
-  await expect(shareLink).toHaveValue(new RegExp(`#workspace=${token}$`));
-  const sharedUrl = await shareLink.inputValue();
-
   await page.getByRole('button', { name: 'Invoices', exact: true }).click();
   await page.getByRole('button', { name: /^Edit I-ITZ-.*001$/ }).click();
-  await page.getByLabel('Project / reference').fill('Saved from a shared link');
+  await page.getByLabel('Project / reference').fill('Shared across devices');
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
-  expect(storedWorkspace.documents[0].project).toBe('Saved from a shared link');
-
-  const secondDevice = await context.newPage();
-  await secondDevice.goto(sharedUrl);
-  await secondDevice.getByRole('button', { name: 'Invoices', exact: true }).click();
-  await expect(secondDevice.locator('table')).toContainText('Saved from a shared link');
+  await expect(page.locator('.toast')).toContainText('Saved to the shared cloud');
+  const second = await context.newPage();
+  await second.goto('/');
+  await second.getByRole('button', { name: 'Invoices', exact: true }).click();
+  await expect(second.locator('table')).toContainText('Shared across devices');
+  await second.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(second.getByRole('button', { name: 'Create shareable workspace link' })).toHaveCount(
+    0,
+  );
 });
 
 test('an expired cloud session prompts for sign-in and preserves local records', async ({
@@ -342,19 +305,9 @@ test('an expired cloud session prompts for sign-in and preserves local records',
 }) => {
   let workspaceReads = 0;
   const localWorkspace = demoWorkspace();
-  await context.route('**/api/workspace/merge', (route) =>
-    route.fulfill({
-      status: 401,
-      json: { error: 'Sign in to access ITZ Studio.' },
-    }),
-  );
-  await context.route('**/api/workspace', async (route) => {
-    if (route.request().method() === 'GET') {
-      workspaceReads++;
-      await route.fulfill({ json: { data: null, version: 0 } });
-      return;
-    }
-    await route.fulfill({ json: { version: 1 } });
+  await context.route('**/api/workspace', (route) => {
+    workspaceReads++;
+    return route.fulfill({ status: 401, json: { error: 'Sign in to access ITZ Studio.' } });
   });
   await page.addInitScript(
     (data) => localStorage.setItem('itz-studio-local-v1', JSON.stringify(data)),
@@ -363,7 +316,7 @@ test('an expired cloud session prompts for sign-in and preserves local records',
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Sign in to ITZ Studio' })).toBeVisible();
   await expect(page.locator('.auth-message')).toContainText('Sign in to access ITZ Studio.');
-  expect(workspaceReads).toBe(0);
+  expect(workspaceReads).toBe(1);
   expect(
     await page.evaluate(
       () => JSON.parse(localStorage.getItem('itz-studio-local-v1') || '{}').documents[0].number,
@@ -371,10 +324,7 @@ test('an expired cloud session prompts for sign-in and preserves local records',
   ).toBe(localWorkspace.documents[0].number);
 });
 
-test('admin login imports local records into the shared cloud workspace once', async ({
-  page,
-  context,
-}) => {
+test('legacy device records are imported only on explicit request', async ({ page, context }) => {
   let storedWorkspace: ReturnType<typeof demoWorkspace> | null = null;
   let version = 0;
   let merges = 0;
@@ -405,16 +355,20 @@ test('admin login imports local records into the shared cloud workspace once', a
     demoWorkspace(),
   );
   await page.goto('/');
+  await expect(page.locator('.storage-state')).toContainText('Cloud connected');
+  expect(merges).toBe(0);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Import legacy device records' }).click();
   await expect.poll(() => merges).toBe(1);
   expect(storedWorkspace!.documents[0].number).toBe(demoWorkspace().documents[0].number);
   await page.reload();
-  await expect.poll(() => workspaceReads).toBe(2);
+  await expect.poll(() => workspaceReads).toBe(3);
   await expect.poll(() => merges).toBe(1);
   await page.getByRole('button', { name: 'Invoices', exact: true }).click();
   await expect(page.locator('table')).toContainText(storedWorkspace!.documents[0].number);
 });
 
-test('local conflict prevents a stale tab from overwriting another tab', async ({
+test('cloud conflict prevents a stale tab from overwriting another tab', async ({
   page,
   context,
 }) => {
@@ -439,10 +393,7 @@ test('local conflict prevents a stale tab from overwriting another tab', async (
 
 test('quotation conversion, full payment and backup rejection', async ({ page }) => {
   const w = demoWorkspace();
-  await page.addInitScript(
-    (data) => localStorage.setItem('itz-studio-local-v1', JSON.stringify(data)),
-    w,
-  );
+  await mockCloud(page, w);
   await page.goto('/');
   await page.getByRole('button', { name: 'Quotations', exact: true }).click();
   await page.getByRole('button', { name: /^Q-ITZ-/ }).click();
@@ -490,10 +441,7 @@ test('long invoices export all rows with multiple measurement schedules', async 
     },
   ];
   d.notes = 'Final verification marker: ITZ-END-OF-DOCUMENT';
-  await page.addInitScript(
-    (data) => localStorage.setItem('itz-studio-local-v1', JSON.stringify(data)),
-    w,
-  );
+  await mockCloud(page, w);
   await page.goto('/');
   await page.getByRole('button', { name: /^Invoices/ }).click();
   await page.getByRole('button', { name: /^I-ITZ-.*001$/ }).click();
@@ -501,4 +449,33 @@ test('long invoices export all rows with multiple measurement schedules', async 
   await page.getByRole('button', { name: 'Download PDF' }).click();
   await (await download).saveAs('test-results/long-invoice.pdf');
   await page.screenshot({ path: 'test-results/document-preview.png' });
+});
+
+test('cloud failure blocks editing and retry recovers without local fallback', async ({ page }) => {
+  await page.route('**/api/workspace', (r) =>
+    r.fulfill({ status: 503, json: { error: 'Cloud workspace unavailable.' } }),
+  );
+  await page.goto('/');
+  await expect(page.locator('.auth-message')).toContainText('Cloud workspace unavailable.');
+  await page.getByRole('button', { name: 'Close dialog' }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  expect(await page.locator('.main-shell').evaluate((e) => e.hasAttribute('inert'))).toBe(true);
+  await mockCloud(page);
+  await page.getByRole('button', { name: 'Retry cloud connection' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('.storage-state')).toContainText('Cloud connected');
+});
+test('a failed save keeps edits in the form and never writes device records', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Create invoice', exact: true }).click();
+  await page.getByLabel('Client name', { exact: true }).fill('Unsaved client');
+  await page.getByLabel('Description', { exact: true }).fill('Cloud-only service');
+  await page.getByLabel('Unit price', { exact: true }).fill('1000');
+  await page.route('**/api/workspace', (r) =>
+    r.fulfill({ status: 503, json: { error: 'Cloud save failed.' } }),
+  );
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.locator('.toast-error')).toContainText('Cloud save failed.');
+  await expect(page.getByLabel('Client name', { exact: true })).toHaveValue('Unsaved client');
+  expect(await page.evaluate(() => localStorage.getItem('itz-studio-local-v1'))).toBeNull();
 });

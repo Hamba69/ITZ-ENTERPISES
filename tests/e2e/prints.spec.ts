@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { mockCloud } from './cloud-fixture';
 import { demoWorkspace, templates } from '../../src/lib/business';
 
 test.beforeEach(async ({ context }) => {
@@ -13,15 +14,7 @@ test.beforeEach(async ({ context }) => {
       }),
     }),
   );
-  await context.route('**/api/workspace/merge', (route) =>
-    route.fulfill({ json: { version: 0, merged: false } }),
-  );
-  await context.route('**/api/workspace', (route) =>
-    route.fulfill({
-      status: 503,
-      json: { error: 'Cloud workspace unavailable.' },
-    }),
-  );
+  await mockCloud(context);
 });
 
 for (const template of templates) {
@@ -31,10 +24,7 @@ for (const template of templates) {
     doc.template = template.id;
     doc.font =
       template.id === 'editorial' ? 'serif' : template.id === 'blueprint' ? 'mono' : 'sans';
-    await page.addInitScript(
-      (data) => localStorage.setItem('itz-studio-local-v1', JSON.stringify(data)),
-      w,
-    );
+    await mockCloud(page, w);
     await page.goto('/');
     await page.getByRole('button', { name: /^Invoices/ }).click();
     await page.getByRole('button', { name: /^I-ITZ-.*001$/ }).click();
