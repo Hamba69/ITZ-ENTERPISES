@@ -13,6 +13,15 @@ test.beforeEach(async ({ context }) => {
       }),
     }),
   );
+  await context.route('**/api/workspace/merge', (route) =>
+    route.fulfill({ json: { version: 0, merged: false } }),
+  );
+  await context.route('**/api/workspace', (route) =>
+    route.fulfill({
+      status: 503,
+      json: { error: 'Cloud workspace unavailable.' },
+    }),
+  );
 });
 
 for (const template of templates) {
