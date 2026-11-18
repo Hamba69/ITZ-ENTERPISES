@@ -13,6 +13,15 @@ test.beforeEach(async ({ context }) => {
       }),
     }),
   );
+  await context.route('**/api/workspace/merge', (route) =>
+    route.fulfill({ json: { version: 0, merged: false } }),
+  );
+  await context.route('**/api/workspace', (route) =>
+    route.fulfill({
+      status: 503,
+      json: { error: 'Cloud workspace unavailable.' },
+    }),
+  );
 });
 
 test('requires an allowlisted sign-in and does not offer public registration', async ({
