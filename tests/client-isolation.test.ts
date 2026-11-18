@@ -23,7 +23,8 @@ test('a client token cannot cross recipient, document, comment, receipt or galle
     await db.exec(`create role anon; create role authenticated; create schema auth;
       create table auth.users(id uuid primary key);
       create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
-      grant usage on schema auth to anon,authenticated; grant execute on function auth.uid() to anon,authenticated;
+      create function auth.jwt() returns jsonb language sql stable as $$select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb$$;
+      grant usage on schema auth to anon,authenticated; grant execute on function auth.uid() to anon,authenticated; grant execute on function auth.jwt() to authenticated;
       insert into auth.users values('${owner}');
       alter default privileges in schema public grant all on tables to anon,authenticated;`);
     for (const file of [
@@ -200,7 +201,8 @@ test('installing isolation retires legacy links and preserves private records', 
   try {
     await db.exec(`create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key);
       create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
-      grant usage on schema auth to anon,authenticated; grant execute on function auth.uid() to anon,authenticated; insert into auth.users values('${owner}');`);
+      create function auth.jwt() returns jsonb language sql stable as $$select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb$$;
+      grant usage on schema auth to anon,authenticated; grant execute on function auth.uid() to anon,authenticated; grant execute on function auth.jwt() to authenticated; insert into auth.users values('${owner}');`);
     for (const file of ['20261101160933_itz_business_workspace.sql','20261118031149_itz_client_links.sql']) await db.exec((await readFile(new URL('../supabase/migrations/'+file,import.meta.url),'utf8')).split('-- STORAGE SECTION:')[0]);
     const w=demoWorkspace(), doc=w.documents[0], hash='a'.repeat(64);
     await db.exec(`set role authenticated; set request.jwt.claim.sub='${owner}';`);

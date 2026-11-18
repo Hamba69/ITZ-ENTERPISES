@@ -1,6 +1,15 @@
 import { createClient } from '@/lib/supabase/server';
 import { getAdminConfigurationStatus, getAdminRole } from './roles';
 
+function getWorkspaceOwnerId(user: { id: string; app_metadata?: Record<string, unknown> }) {
+  const ownerId = user.app_metadata?.itz_workspace_owner_id;
+  return user.app_metadata?.itz_workspace_access === 'shared_admin' &&
+    typeof ownerId === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ownerId)
+    ? ownerId
+    : user.id;
+}
+
 export async function authorizeAdmin() {
   const configurationStatus = getAdminConfigurationStatus();
   if (configurationStatus !== 'ready') {
@@ -28,5 +37,11 @@ export async function authorizeAdmin() {
     return { ok: false as const, status: 403, message: 'This account is not authorized.' };
   }
 
-  return { ok: true as const, client, user: data.user, role };
+  return {
+    ok: true as const,
+    client,
+    user: data.user,
+    role,
+    workspaceOwnerId: getWorkspaceOwnerId(data.user),
+  };
 }

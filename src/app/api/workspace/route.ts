@@ -13,7 +13,7 @@ export async function GET() {
   const { data, error } = await access.client
     .from('itz_workspaces')
     .select('data,version')
-    .eq('owner_id', access.user.id)
+    .eq('owner_id', access.workspaceOwnerId)
     .maybeSingle();
   if (error)
     return reply(

@@ -87,6 +87,21 @@ const navigation = [
   { label: 'Templates', icon: Palette },
 ] as const;
 const localKey = 'itz-studio-local-v1';
+const localCloudImportKey = 'itz-studio-cloud-import-v1';
+async function localDataFingerprint(value: string) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+function hasWorkspaceData(workspace: Workspace) {
+  const emptyCompany = emptyWorkspace().company;
+  return (
+    workspace.clients.length > 0 ||
+    workspace.products.length > 0 ||
+    workspace.documents.length > 0 ||
+    workspace.expenses.length > 0 ||
+    JSON.stringify(workspace.company) !== JSON.stringify(emptyCompany)
+  );
+}
 const auditFieldLabels: Record<string, string> = {
   number: 'Document number',
   kind: 'Document type',
@@ -278,6 +293,7 @@ export function Studio() {
         if (!recoveryFlow.current) {
           setAuthOpen(false);
           setAuthError('');
+          await openCloud();
         }
       } catch {
         if (!active) return;
@@ -384,10 +400,45 @@ export function Studio() {
   }
   async function openCloud() {
     try {
-      const auth = await createClient().auth.getUser();
-      if (!auth.data.user) {
-        setAuthOpen(true);
-        return;
+      const localRaw = localStorage.getItem(localKey);
+      const localHash = await localDataFingerprint(localRaw || '');
+      let localImportWarning = '';
+      let localImported = false;
+      if (localRaw) {
+        let localJson: unknown = null;
+        try {
+          localJson = JSON.parse(localRaw);
+        } catch {
+          localImportWarning =
+            'Local data could not be validated. It remains on this device and was not synced.';
+        }
+        const parsedLocal = localImportWarning ? null : workspaceSchema.safeParse(localJson);
+        const localData = parsedLocal?.success ? parsedLocal.data : null;
+        if (localData) {
+          const importedHash = localStorage.getItem(localCloudImportKey);
+          if (hasWorkspaceData(localData) && importedHash !== localHash) {
+            const mergeResponse = await fetch('/api/workspace/merge', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ data: localData }),
+            });
+            const mergeBody = await mergeResponse.json();
+            if (mergeResponse.ok) {
+              localStorage.setItem(localCloudImportKey, localHash);
+              localImported = mergeBody.merged === true;
+            }
+            else if (mergeResponse.status === 409)
+              localImportWarning = mergeBody.error || 'Local records could not be merged.';
+            else throw new Error(mergeBody.error || 'Could not sync local records.');
+          } else if (!hasWorkspaceData(localData)) {
+            localStorage.setItem(localCloudImportKey, localHash);
+          }
+        } else if (!localImportWarning) {
+          localImportWarning =
+            'Local data could not be validated. It remains on this device and was not synced.';
+        }
+      } else {
+        localStorage.setItem(localCloudImportKey, localHash);
       }
       const res = await fetch('/api/workspace', { cache: 'no-store' });
       const body = await res.json();
@@ -395,7 +446,6 @@ export function Studio() {
       const next = body.data ? workspaceSchema.parse(body.data) : emptyWorkspace();
       setW(next);
       setVersion(body.version);
-      setUser(auth.data.user.email || 'Signed in');
       setSharedToken('');
       setSharedLink('');
       setMode('cloud');
@@ -403,7 +453,13 @@ export function Studio() {
       url.hash = '';
       window.history.replaceState({}, '', url);
       setAuthOpen(false);
-      notify('Cloud workspace opened. Local records remain separate.');
+      notify(
+        localImportWarning ||
+          (localImported
+            ? 'This device’s saved records were synced to the shared cloud workspace.'
+            : 'Shared cloud workspace opened. This device’s saved records are preserved.'),
+        !!localImportWarning,
+      );
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Could not open cloud workspace.';
       notify(message, true);
@@ -2209,6 +2265,7 @@ export function Studio() {
                   setAuthError('');
                   setReady(true);
                   notify(`Signed in as ${profile.displayName}.`);
+                  await openCloud();
                 }
               } catch (e) {
                 setAuthError(e instanceof Error ? e.message : 'Authentication failed.');

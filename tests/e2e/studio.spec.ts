@@ -327,6 +327,48 @@ test('share links load and save workspace data through the database API', async 
   await expect(secondDevice.locator('table')).toContainText('Saved from a shared link');
 });
 
+test('admin login imports local records into the shared cloud workspace once', async ({
+  page,
+  context,
+}) => {
+  let storedWorkspace: ReturnType<typeof demoWorkspace> | null = null;
+  let version = 0;
+  let merges = 0;
+  await context.route('**/api/workspace/merge', async (route) => {
+    storedWorkspace = route.request().postDataJSON().data;
+    version = 1;
+    merges++;
+    await route.fulfill({ json: { version, merged: true } });
+  });
+  await context.route('**/api/workspace', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: { data: storedWorkspace, version } });
+      return;
+    }
+    const body = route.request().postDataJSON();
+    if (body.version !== version) {
+      await route.fulfill({ status: 409, json: { error: 'Could not save' } });
+      return;
+    }
+    storedWorkspace = body.data;
+    version++;
+    await route.fulfill({ json: { version } });
+  });
+  await page.addInitScript(
+    (data) => localStorage.setItem('itz-studio-local-v1', JSON.stringify(data)),
+    demoWorkspace(),
+  );
+  await page.goto('/');
+  await expect(page.locator('.storage-state')).toContainText('Cloud connected');
+  await expect(page.locator('.toast')).toContainText('synced to the shared cloud workspace');
+  await expect.poll(() => merges).toBe(1);
+  await page.reload();
+  await expect(page.locator('.storage-state')).toContainText('Cloud connected');
+  await expect.poll(() => merges).toBe(1);
+  await page.getByRole('button', { name: 'Invoices', exact: true }).click();
+  await expect(page.locator('table')).toContainText(storedWorkspace!.documents[0].number);
+});
+
 test('local conflict prevents a stale tab from overwriting another tab', async ({
   page,
   context,

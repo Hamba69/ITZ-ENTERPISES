@@ -7,7 +7,7 @@ test('Postgres migration enforces owner isolation, authentication and conflict c
   const db = new PGlite();
   try {
     await db.exec(
-      `create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key); create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$; grant usage on schema auth to anon, authenticated; grant execute on function auth.uid() to anon, authenticated; insert into auth.users values ('00000000-0000-4000-8000-000000000001'),('00000000-0000-4000-8000-000000000002');`,
+      `create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key); create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$; create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$; grant usage on schema auth to anon, authenticated; grant execute on function auth.uid() to anon, authenticated; grant execute on function auth.jwt() to authenticated; insert into auth.users values ('00000000-0000-4000-8000-000000000001'),('00000000-0000-4000-8000-000000000002');`,
     );
     await db.exec(
       'alter default privileges in schema public grant all on tables to anon, authenticated;',
@@ -81,14 +81,60 @@ test('Postgres migration enforces owner isolation, authentication and conflict c
   }
 });
 
+test('configured admin claims share one workspace while unconfigured users remain owner-isolated', async () => {
+  const db = new PGlite();
+  const one = '00000000-0000-4000-8000-000000000001';
+  const two = '00000000-0000-4000-8000-000000000002';
+  try {
+    await db.exec(
+      `create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key); create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$; create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$; grant usage on schema auth to anon, authenticated; grant execute on function auth.uid() to anon, authenticated; grant execute on function auth.jwt() to authenticated; insert into auth.users values ('${one}'),('${two}'); alter default privileges in schema public grant all on tables to anon, authenticated;`,
+    );
+    await db.exec(
+      await readFile(
+        new URL(
+          '../supabase/migrations/20261101160933_itz_business_workspace.sql',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+    );
+    await db.exec(
+      `set role authenticated; set request.jwt.claim.sub='${one}'; set request.jwt.claims='{"app_metadata":{"itz_workspace_access":"shared_admin","itz_workspace_owner_id":"${one}"}}';`,
+    );
+    await db.query(`select public.itz_save_workspace('{"schemaVersion":1,"marker":"initial"}',0)`);
+    await db.exec(
+      `set request.jwt.claim.sub='${two}'; set request.jwt.claims='{"app_metadata":{"itz_workspace_access":"shared_admin","itz_workspace_owner_id":"${one}"}}';`,
+    );
+    assert.equal((await db.query('select * from public.itz_workspaces')).rows.length, 1);
+    await db.query(
+      `select public.itz_save_workspace('{"schemaVersion":1,"marker":"shared-update"}',1)`,
+    );
+    await db.exec(`set request.jwt.claims='{}';`);
+    assert.equal((await db.query('select * from public.itz_workspaces')).rows.length, 0);
+    await db.query(`select public.itz_save_workspace('{"schemaVersion":1,"marker":"private"}',0)`);
+    assert.equal((await db.query('select * from public.itz_workspaces')).rows.length, 1);
+  } finally {
+    await db.close();
+  }
+});
+
 test('shared workspace migration restricts table access and enforces link-version checks', async () => {
   const db = new PGlite();
   try {
     await db.exec(
-      `create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key); create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$; grant usage on schema auth to anon, authenticated; grant execute on function auth.uid() to anon, authenticated; insert into auth.users values ('00000000-0000-4000-8000-000000000001'),('00000000-0000-4000-8000-000000000002');`,
+      `create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key); create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$; create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$; grant usage on schema auth to anon, authenticated; grant execute on function auth.uid() to anon, authenticated; grant execute on function auth.jwt() to authenticated; insert into auth.users values ('00000000-0000-4000-8000-000000000001'),('00000000-0000-4000-8000-000000000002');`,
     );
     await db.exec(
       'alter default privileges in schema public grant all on tables to anon, authenticated;',
+    );
+    await db.exec(
+      await readFile(
+        new URL(
+          '../supabase/migrations/20261101160933_itz_business_workspace.sql',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
     );
     await db.exec(
       await readFile(
@@ -186,7 +232,7 @@ test('client links isolate documents, freeze receipts and enforce anonymous limi
   const one = '00000000-0000-4000-8000-000000000001', two = '00000000-0000-4000-8000-000000000002';
   const hash = 'a'.repeat(64), token = 'a'.repeat(43);
   try {
-    await db.exec(`create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key); create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; grant usage on schema auth to anon,authenticated; grant execute on function auth.uid() to anon,authenticated; insert into auth.users values ('${one}'),('${two}'); alter default privileges in schema public grant all on tables to anon,authenticated;`);
+    await db.exec(`create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key); create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb $$; grant usage on schema auth to anon,authenticated; grant execute on function auth.uid() to anon,authenticated; grant execute on function auth.jwt() to authenticated; insert into auth.users values ('${one}'),('${two}'); alter default privileges in schema public grant all on tables to anon,authenticated;`);
     for (const file of ['20261101160933_itz_business_workspace.sql','20261103100000_itz_shared_link_workspaces.sql','20261118031149_itz_client_links.sql']) {
       const sql = await readFile(new URL('../supabase/migrations/'+file,import.meta.url),'utf8');
       await db.exec(sql.split('-- STORAGE SECTION:')[0]);

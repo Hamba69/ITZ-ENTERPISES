@@ -73,7 +73,7 @@ create function public.itz_manage_client_link(p_document text,p_action text,p_ha
 returns uuid language plpgsql security definer set search_path='' as $$
 begin
  if auth.uid() is null then raise exception 'Authentication required'; end if;
- perform 1 from public.itz_workspaces where owner_id=auth.uid() for update;
+ perform 1 from public.itz_workspaces where owner_id=public.itz_workspace_owner_id() for update;
  return public.itz_manage_client_link_internal(p_document,p_action,p_hash,p_token,p_expiry,p_gallery);
 end $$;
 revoke all on function public.itz_manage_client_link(text,text,text,text,timestamptz,uuid) from public,anon,authenticated;
