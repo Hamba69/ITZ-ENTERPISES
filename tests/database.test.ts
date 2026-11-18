@@ -97,9 +97,15 @@ test('shared workspace migration restricts table access and enforces link-versio
         'utf8',
       ),
     );
-    await db.exec('set role anon;');
     const tokenHash = 'a'.repeat(64);
     const payload = `{"schemaVersion":1,"marker":"shared-data"}`;
+    await db.exec('set role anon;');
+    await assert.rejects(
+      () =>
+        db.query(`select public.itz_create_shared_workspace('${tokenHash}', '${payload}'::jsonb)`),
+      /permission denied/,
+    );
+    await db.exec('reset role; set role authenticated;');
     const created = await db.query<{ version: number }>(
       `select public.itz_create_shared_workspace('${tokenHash}', '${payload}'::jsonb) as version`,
     );

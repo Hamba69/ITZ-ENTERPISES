@@ -16,9 +16,11 @@ export async function GET() {
   ]);
   if ([links, comments, galleries, media].some((r) => r.error))
     return reply({ error: 'Client links unavailable. Check the migration.' }, 503);
-  const paths = (media.data || []).filter(m => m.ready).map(m => m.poster_path || m.path);
-  const signed = paths.length ? await access.client.storage.from('itz-project-media').createSignedUrls(paths, 3600) : null;
-  const previews = new Map(signed?.data?.map(item => [item.path, item.signedUrl]) || []);
+  const paths = (media.data || []).filter((m) => m.ready).map((m) => m.poster_path || m.path);
+  const signed = paths.length
+    ? await access.client.storage.from('itz-project-media').createSignedUrls(paths, 3600)
+    : null;
+  const previews = new Map(signed?.data?.map((item) => [item.path, item.signedUrl]) || []);
   return reply({
     links: links.data?.map((l) => ({
       ...l,
@@ -26,7 +28,7 @@ export async function GET() {
     })),
     comments: comments.data,
     galleries: galleries.data,
-    media: media.data?.map(m => ({ ...m, url: previews.get(m.poster_path || m.path) })),
+    media: media.data?.map((m) => ({ ...m, url: previews.get(m.poster_path || m.path) })),
   });
 }
 const input = z.object({
@@ -84,7 +86,17 @@ export async function POST(request: NextRequest) {
         .eq('link_id', body.link)
         .is('read_at', null));
     } else if (body.action !== 'retry') return reply({ error: 'Invalid action' }, 400);
-    if (error) return reply({ error: 'Action failed. Check the link and try again.' }, 400);
+    if (error)
+      return reply(
+        {
+          error: error.message.includes('another client')
+            ? 'This gallery belongs to another client. Create a new gallery for this client.'
+            : error.message.includes('retired')
+              ? 'This link was permanently retired to protect client information. Create a new document and client link.'
+              : 'Action failed. Check the link and try again.',
+        },
+        400,
+      );
     if (['create', 'regenerate', 'retry'].includes(body.action)) {
       try {
         await reconcileReceipts(access.client);

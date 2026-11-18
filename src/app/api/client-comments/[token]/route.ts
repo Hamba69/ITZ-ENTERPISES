@@ -7,7 +7,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ to
     const { token } = await context.params;
     const body = commentInput.parse(await readClientRequest(request, 8000));
     if (!validToken(token)) return reply({ error: 'This link is unavailable' }, 404);
-    const { error } = await anonymousClient().rpc('itz_add_client_comment', {
+    const { error } = await anonymousClient().rpc('itz_add_client_comment_v2', {
       p_hash: hashToken(token),
       p_name: body.name,
       p_message: body.message,

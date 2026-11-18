@@ -9,7 +9,7 @@ type OwnerMedia = GalleryMedia & { gallery_id: string; ready: boolean };
 export type LinkState = {
   links: ClientLink[];
   comments: (ClientComment & { link_id: string })[];
-  galleries: { id: string; title: string }[];
+  galleries: { id: string; title: string; recipient_id: string | null; recipient_snapshot: Invoice['client'] | null }[];
   media: OwnerMedia[];
 };
 export const emptyLinks: LinkState = { links: [], comments: [], galleries: [], media: [] };
@@ -150,6 +150,12 @@ export function ClientLinkDialog({
   return (
     <Modal title="Client link" onClose={onClose} wide>
       <div style={{ display: 'grid', gap: 16 }}>
+        {link.disabled_at && (
+          <p role="alert">
+            This link was permanently retired to protect client information. Create a new document
+            and client link; its old comments, receipts and gallery will not be shared.
+          </p>
+        )}
         {(link.revoked_at || (link.expires_at && new Date(link.expires_at) <= new Date())) && (
           <p>This link is revoked or expired. Regenerate or update its expiry before sharing.</p>
         )}
@@ -214,7 +220,7 @@ export function ClientLinkDialog({
         <div className="actions">
           <button
             className="button"
-            disabled={busy}
+            disabled={busy || !!link.disabled_at}
             onClick={() => {
               if (confirm('Regenerate this link? The old URL will stop working.'))
                 void act({ action: 'regenerate', document: doc.id });
@@ -269,11 +275,13 @@ export function ClientLinkDialog({
             }}
           >
             <option value="">None</option>
-            {state.galleries.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.title}
-              </option>
-            ))}
+            {state.galleries
+              .filter((g) => !g.recipient_id || (g.recipient_id === doc.client.id && g.recipient_snapshot && (Object.keys(doc.client) as (keyof Invoice['client'])[]).every(key => g.recipient_snapshot![key] === doc.client[key])))
+              .map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.title}
+                </option>
+              ))}
             <option value="new">+ New gallery</option>
           </select>
         </Field>
@@ -312,8 +320,16 @@ export function ClientLinkDialog({
             {busy && <progress max={100} value={progress} aria-label="Upload progress" />}
             {media.map((m, i) => (
               <div key={m.id}>
-            {m.url && <img src={m.url} alt={m.caption || `Project ${m.kind}`} width={160} height={100} style={{objectFit:'cover',display:'block'}} />}
-            <strong>
+                {m.url && (
+                  <img
+                    src={m.url}
+                    alt={m.caption || `Project ${m.kind}`}
+                    width={160}
+                    height={100}
+                    style={{ objectFit: 'cover', display: 'block' }}
+                  />
+                )}
+                <strong>
                   {i + 1}. {m.kind} {m.ready ? '' : '(Incomplete upload — delete and retry)'}
                 </strong>
                 <Field label="Caption">

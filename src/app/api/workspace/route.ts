@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { authorizeAdmin } from '@/lib/auth/admin';
 import { workspaceSchema } from '@/lib/business';
 import { reconcileReceipts } from '@/lib/client-link-server';
 import { createClient as createReceiptClient } from '@/lib/supabase/server';
@@ -8,15 +8,12 @@ function reply(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: { 'Cache-Control': 'private, no-store' } });
 }
 export async function GET() {
-  const db = await createClient();
-  const {
-    data: { user },
-  } = await db.auth.getUser();
-  if (!user) return reply({ error: 'Sign in to open your cloud workspace.' }, 401);
-  const { data, error } = await db
+  const access = await authorizeAdmin();
+  if (!access.ok) return reply({ error: access.message }, access.status);
+  const { data, error } = await access.client
     .from('itz_workspaces')
     .select('data,version')
-    .eq('owner_id', user.id)
+    .eq('owner_id', access.user.id)
     .maybeSingle();
   if (error)
     return reply(
@@ -31,11 +28,8 @@ export async function PUT(request: NextRequest) {
     return reply({ error: 'Invalid request origin.' }, 403);
   if (Number(request.headers.get('content-length')) > 5_000_000)
     return reply({ error: 'Workspace exceeds 5 MB. Export an archive first.' }, 413);
-  const db = await createClient();
-  const {
-    data: { user },
-  } = await db.auth.getUser();
-  if (!user) return reply({ error: 'Your session expired. Sign in again.' }, 401);
+  const access = await authorizeAdmin();
+  if (!access.ok) return reply({ error: access.message }, access.status);
   let body;
   try {
     const raw = await request.text();
@@ -49,7 +43,7 @@ export async function PUT(request: NextRequest) {
   const parsed = workspaceSchema.safeParse(body.data);
   if (!parsed.success || !Number.isSafeInteger(body.version) || body.version < 0)
     return reply({ error: 'Invalid workspace data.' }, 400);
-  const { data, error } = await db.rpc('itz_save_workspace', {
+  const { data, error } = await access.client.rpc('itz_save_workspace', {
     payload: parsed.data,
     expected_version: body.version,
   });

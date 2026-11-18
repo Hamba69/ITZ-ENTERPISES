@@ -27,7 +27,8 @@ export async function reconcileReceipts(client: SupabaseClient) {
   const w = workspaceSchema.parse(workspace.data);
   const { data: links, error: linksError } = await client
     .from('itz_client_links')
-    .select('id,document_id');
+    .select('id,document_id')
+    .is('disabled_at', null);
   if (linksError) throw new Error('Receipt sync unavailable');
   for (const link of links || []) {
     const doc = w.documents.find((d) => d.id === link.document_id);
@@ -49,7 +50,7 @@ export async function reconcileReceipts(client: SupabaseClient) {
 export async function getClientPage(token: string): Promise<ClientPageData | null> {
   if (!validToken(token)) return null;
   try {
-    const { data, error } = await anonymousClient().rpc('itz_get_client_page', {
+    const { data, error } = await anonymousClient().rpc('itz_get_client_page_v2', {
       p_hash: hashToken(token),
     });
     if (error || !data) return null;

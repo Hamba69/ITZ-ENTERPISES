@@ -50,7 +50,7 @@ export function receiptChanges(doc: Invoice, existing: Receipt[]) {
                 number: `R-${doc.number}-${String(sequence).padStart(2, '0')}`,
                 payment,
                 invoiceNumber: doc.number,
-          client: { name: doc.client.name },
+                client: { name: doc.client.name },
                 company: doc.company,
                 currency: doc.currency,
                 font: doc.font,
@@ -93,6 +93,7 @@ export type ClientPageData = {
   gallery: { title: string; media: GalleryMedia[] } | null;
 };
 export type ClientLink = {
+  disabled_at: string | null;
   id: string;
   document_id: string;
   raw_token: string;

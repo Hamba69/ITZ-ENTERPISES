@@ -1,6 +1,20 @@
 import { test, expect } from '@playwright/test';
 import { demoWorkspace, templates } from '../../src/lib/business';
 
+test.beforeEach(async ({ context }) => {
+  await context.route('**/api/auth/profile', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        email: 'mulumbakacm@gmail.com',
+        role: 'business_admin',
+        displayName: 'Mulumba Kasim E',
+      }),
+    }),
+  );
+});
+
 for (const template of templates) {
   test(`${template.name} template prints with the complete document`, async ({ page }) => {
     const w = demoWorkspace();

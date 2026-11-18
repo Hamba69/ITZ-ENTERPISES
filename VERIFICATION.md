@@ -98,3 +98,18 @@ Hosted Supabase persistence, deployed grants/RLS, Storage access and email deliv
 - Configuration/documentation: `next.config.ts`, `package.json`, `package-lock.json`, `README.md`, `VERIFICATION.md`.
 
 `DocumentView`, the original `exportPdf` function, shared-link mode and workspace backup schema were not changed by this feature. New public CSS is scoped under `.client-page`.
+
+## Client isolation hardening — 18 November 2026
+
+Follow-up security review found that owner isolation alone did not prevent an existing link following a document reassigned to another client, or the owner attaching one gallery to different clients' documents. The additive `20261118035044_itz_client_isolation.sql` migration closes both paths. Apply it **after** the three earlier migrations. It permanently retires legacy links and gallery bindings rather than guessing the historical recipients; existing receipts/comments/media remain available only to their owner. A fresh document/link and gallery are required for subsequent sharing of those legacy records.
+
+- Links bind to the complete client snapshot. Changing client details, removing the document/workspace or changing its status to draft permanently retires the link. Restoring the record does not revive it, and regeneration cannot transfer the old thread or receipts to a different recipient. Other document revisions remain live.
+- Gallery bindings are immutable from owner-facing table access. The database and picker only allow attachments to documents for the same client ID, while different documents for that client may share a gallery.
+- Public document and receipt projections whitelist nested fields. The unfiltered internal RPCs and helper functions have no anonymous execution grant. Document reads hold workspace/link locks in the same order as owner mutations to prevent reassignment racing the projection.
+- Public page, comment and media APIs call versioned RPCs available only after the isolation migration. Missing migration means unavailable/failing requests, never fallback to the older implementation. Receipt synchronisation excludes retired links.
+- Added `tests/client-isolation.test.ts`: two clients within one workspace; distinct receipts and comments; cross-client gallery rejection; guessed media ID plus wrong token/header; nested private fields; blocked internal RPCs; live ordinary revisions; reassignment/deletion/restoration; irreversible retirement; and safe legacy migration.
+- Added `tests/e2e/client-isolation.spec.ts`: a public bearer token cannot act as an owner session for workspace/link/gallery APIs; invalid media tokens return 404.
+
+Validation: `npm test` **18 passed**, `npm run typecheck` passed, `npm run build` passed, `npm run test:e2e` **21 passed**, with no skipped tests. These checks cover the current local working tree; hosted SQL/Storage policies and real-device revocation are still unverified. No push or remote migration was performed.
+
+Boundary: this remains the explicitly requested no-login bearer-link design. The system restricts what each token can access, but cannot identify who is holding a forwarded valid URL or classify information staff deliberately put in a client's document/gallery. Already downloaded content cannot be recalled. An issued Storage URL can remain usable until its expiry. Requiring verified recipient identity would need an additional authentication/verification flow.

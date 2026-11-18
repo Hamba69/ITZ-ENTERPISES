@@ -12,7 +12,7 @@ export async function GET(
   try {
     const hash = hashToken(token),
       client = anonymousClient(hash);
-    const { data: path, error } = await client.rpc('itz_client_media_path', {
+    const { data: path, error } = await client.rpc('itz_client_media_path_v2', {
       p_hash: hash,
       p_id: id,
       p_poster: request.nextUrl.searchParams.get('poster') === '1',

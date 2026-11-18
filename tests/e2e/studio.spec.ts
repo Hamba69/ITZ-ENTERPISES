@@ -1,6 +1,80 @@
 import { test, expect } from '@playwright/test';
 import { demoWorkspace, uid } from '../../src/lib/business';
 
+test.beforeEach(async ({ context }) => {
+  await context.route('**/api/auth/profile', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        email: 'mulumbakacm@gmail.com',
+        role: 'business_admin',
+        displayName: 'Mulumba Kasim E',
+      }),
+    }),
+  );
+});
+
+test('requires an allowlisted sign-in and does not offer public registration', async ({
+  page,
+  context,
+}) => {
+  await context.unroute('**/api/auth/profile');
+  await context.route('**/api/auth/profile', (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'Sign in to access ITZ Studio.' }),
+    }),
+  );
+  await page.goto('/');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sign in to ITZ Studio' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Create an account' })).toHaveCount(0);
+});
+
+test('technical admins can open infrastructure status', async ({ page, context }) => {
+  await context.unroute('**/api/auth/profile');
+  await context.route('**/api/auth/profile', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        email: 'shabehamba@gmail.com',
+        role: 'technical_admin',
+        displayName: 'Hamba Shabil E',
+      }),
+    }),
+  );
+  await page.route('**/api/admin/infrastructure', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        deployment: {
+          environment: 'preview',
+          url: 'example.vercel.app',
+          region: 'iad1',
+          commit: 'abc1234',
+          runtime: 'Node.js v24',
+        },
+        services: {
+          supabaseAuth: 'Connected',
+          workspaceDatabase: 'Connected',
+          workspaceDatabaseDetail: 'Workspace table query succeeded.',
+        },
+      }),
+    }),
+  );
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Infrastructure', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Running infrastructure' })).toBeVisible();
+  await expect(page.locator('.infrastructure-grid')).toContainText('example.vercel.app');
+  await expect(page.locator('.infrastructure-grid')).toContainText(
+    'Workspace table query succeeded.',
+  );
+});
+
 test('invoice lifecycle, exact totals, measurement schedule, PDF, persistence and reports', async ({
   page,
 }) => {
@@ -111,7 +185,7 @@ test('paid invoices can be edited without losing payment or revision history', a
   await expect(page.locator('.document-actions .badge')).toHaveText('paid');
   await expect(page.locator('dialog .print-area .document')).toContainText('Completed project');
   await expect(page.locator('.audit-trail')).toContainText('2 revisions');
-  await expect(page.locator('.audit-trail')).toContainText('This device');
+  await expect(page.locator('.audit-trail')).toContainText('mulumbakacm@gmail.com');
   await expect(page.locator('.audit-trail')).toContainText('Payments');
   await expect(page.locator('.audit-trail')).toContainText('Project / reference');
 });
@@ -201,7 +275,7 @@ test('dashboard screenshot and unauthenticated API protection', async ({ page, r
   const invalid = await request.put('/api/workspace', { data: { data: {}, version: 0 } });
   expect(invalid.status()).toBe(403);
   expect((await request.get('/api/shared-workspace')).status()).toBe(401);
-  expect((await request.post('/api/shared-workspace', { data: { data: {} } })).status()).toBe(403);
+  expect((await request.post('/api/shared-workspace', { data: { data: {} } })).status()).toBe(401);
 });
 
 test('share links load and save workspace data through the database API', async ({
