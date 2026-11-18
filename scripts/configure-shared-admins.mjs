@@ -1,6 +1,6 @@
-import { loadEnvConfig } from '@next/env';
+import nextEnv from '@next/env';
 
-loadEnvConfig(process.cwd());
+nextEnv.loadEnvConfig(process.cwd());
 
 const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '');
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SERCICE_ROLE_KEY;

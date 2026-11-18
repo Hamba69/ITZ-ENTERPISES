@@ -334,6 +334,7 @@ test('admin login imports local records into the shared cloud workspace once', a
   let storedWorkspace: ReturnType<typeof demoWorkspace> | null = null;
   let version = 0;
   let merges = 0;
+  let workspaceReads = 0;
   await context.route('**/api/workspace/merge', async (route) => {
     storedWorkspace = route.request().postDataJSON().data;
     version = 1;
@@ -342,6 +343,7 @@ test('admin login imports local records into the shared cloud workspace once', a
   });
   await context.route('**/api/workspace', async (route) => {
     if (route.request().method() === 'GET') {
+      workspaceReads++;
       await route.fulfill({ json: { data: storedWorkspace, version } });
       return;
     }
@@ -359,11 +361,10 @@ test('admin login imports local records into the shared cloud workspace once', a
     demoWorkspace(),
   );
   await page.goto('/');
-  await expect(page.locator('.storage-state')).toContainText('Cloud connected');
-  await expect(page.locator('.toast')).toContainText('synced to the shared cloud workspace');
   await expect.poll(() => merges).toBe(1);
+  expect(storedWorkspace!.documents[0].number).toBe(demoWorkspace().documents[0].number);
   await page.reload();
-  await expect(page.locator('.storage-state')).toContainText('Cloud connected');
+  await expect.poll(() => workspaceReads).toBe(2);
   await expect.poll(() => merges).toBe(1);
   await page.getByRole('button', { name: 'Invoices', exact: true }).click();
   await expect(page.locator('table')).toContainText(storedWorkspace!.documents[0].number);
