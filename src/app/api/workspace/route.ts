@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { workspaceSchema } from '@/lib/business';
+import { reconcileReceipts } from '@/lib/client-link-server';
+import { createClient as createReceiptClient } from '@/lib/supabase/server';
 export const dynamic = 'force-dynamic';
 function reply(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: { 'Cache-Control': 'private, no-store' } });
@@ -61,5 +63,8 @@ export async function PUT(request: NextRequest) {
       },
       error.code === '40001' ? 409 : 503,
     );
-  return reply({ version: data });
+  let receiptWarning: string | undefined;
+  try { await reconcileReceipts(await createReceiptClient()); }
+  catch { receiptWarning = 'Workspace saved. Client receipts need synchronisation; use Retry receipt sync in Client link before sharing.'; }
+  return reply({ version: data, receiptWarning });
 }
