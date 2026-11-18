@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { authorizeAdmin } from '@/lib/auth/admin';
 import { workspaceSchema } from '@/lib/business';
 
 export const dynamic = 'force-dynamic';
@@ -45,11 +45,12 @@ function originIsValid(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const access = await authorizeAdmin();
+  if (!access.ok) return reply({ error: access.message }, access.status);
   const token = shareToken(request);
   if (!token) return reply({ error: 'A valid shared workspace link is required.' }, 401);
 
-  const db = await createClient();
-  const { data, error } = await db.rpc('itz_get_shared_workspace', {
+  const { data, error } = await access.client.rpc('itz_get_shared_workspace', {
     p_token_hash: tokenHash(token),
   });
   if (error)
@@ -67,6 +68,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const access = await authorizeAdmin();
+  if (!access.ok) return reply({ error: access.message }, access.status);
   if (!originIsValid(request)) return reply({ error: 'Invalid request origin.' }, 403);
 
   let parsed;
@@ -80,8 +83,7 @@ export async function POST(request: NextRequest) {
   }
 
   const token = randomBytes(32).toString('base64url');
-  const db = await createClient();
-  const { data, error } = await db.rpc('itz_create_shared_workspace', {
+  const { data, error } = await access.client.rpc('itz_create_shared_workspace', {
     p_token_hash: tokenHash(token),
     payload: parsed.data,
   });
@@ -97,6 +99,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const access = await authorizeAdmin();
+  if (!access.ok) return reply({ error: access.message }, access.status);
   if (!originIsValid(request)) return reply({ error: 'Invalid request origin.' }, 403);
   const token = shareToken(request);
   if (!token) return reply({ error: 'A valid shared workspace link is required.' }, 401);
@@ -118,8 +122,7 @@ export async function PUT(request: NextRequest) {
   )
     return reply({ error: 'Invalid workspace version.' }, 400);
 
-  const db = await createClient();
-  const { data, error } = await db.rpc('itz_save_shared_workspace', {
+  const { data, error } = await access.client.rpc('itz_save_shared_workspace', {
     p_token_hash: tokenHash(token),
     payload: parsed.data,
     expected_version: expectedVersion,

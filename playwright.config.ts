@@ -12,6 +12,7 @@ export default defineConfig({
     ...devices['Desktop Chrome'],
   },
   webServer: {
+    env: { ITZ_CLIENT_FIXTURES: '1' },
     command: 'npm run start -- --hostname 127.0.0.1',
     url: 'http://localhost:3000',
     reuseExistingServer: true,

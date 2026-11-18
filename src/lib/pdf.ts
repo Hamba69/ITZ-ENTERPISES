@@ -1,6 +1,24 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatDate, lineTotal, totals, type Invoice } from './business';
+import type { ReceiptSnapshot } from './client-links';
+export function exportReceiptPdf(receipt: ReceiptSnapshot, superseded = false) {
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+  const font = receipt.font === 'serif' ? 'times' : receipt.font === 'mono' ? 'courier' : 'helvetica';
+  const color = { industrial: [10,77,140], forge: [196,91,24], editorial: [52,61,72], blueprint: [36,116,107] }[receipt.template] as [number,number,number];
+  pdf.setFillColor(...color); pdf.rect(0,0,210,4,'F');
+  pdf.setFont(font,'bold'); pdf.setTextColor(...color); pdf.setFontSize(23); pdf.text('PAYMENT RECEIPT',16,24);
+  pdf.setFontSize(11); pdf.text(receipt.number,16,34);
+  autoTable(pdf, { startY: 44, margin: 16, theme: 'striped', styles: { font, fontSize: 10, cellPadding: 4 }, headStyles: { fillColor: color }, head: [['DETAIL','RECORD']], body: [
+    ['Status',superseded ? 'SUPERSEDED - retained for reference; replaced or removed payment.' : 'Recorded payment'],
+    ['Date',formatDate(receipt.payment.date)], ['Received from',receipt.client.name],
+    ['Invoice',receipt.invoiceNumber], ['Method',receipt.payment.method], ['Reference',receipt.payment.reference || '-'],
+    ['Amount',`${receipt.currency} ${receipt.payment.amount.toLocaleString('en-GB')}`],
+    ['Balance after this payment',`${receipt.currency} ${receipt.balance.toLocaleString('en-GB')}`],
+    ['Issued by',[receipt.company.name,receipt.company.address,receipt.company.phone,receipt.company.email,receipt.company.tin].filter(Boolean).join('\n')],
+  ] });
+  pdf.save(`${receipt.number.replace(/[^A-Za-z0-9._-]/g,'-')}.pdf`);
+}
 export function exportPdf(doc: Invoice) {
   const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
   const colors = {

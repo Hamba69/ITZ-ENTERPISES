@@ -25,6 +25,7 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  Server,
   Trash2,
   Users,
   Wallet,
@@ -59,6 +60,7 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import { Brand, Empty, Field, Modal, SectionTitle, Stat } from './ui';
 import { DocumentView } from './document-view';
+import { ClientLinkDialog, emptyLinks, linkAction, type LinkState } from './client-link-manager';
 import { DocumentEditor } from './document-editor';
 import { CompanyForm, RecordModal, type RecordForm } from './record-forms';
 
@@ -72,7 +74,8 @@ type Page =
   | 'Expenses'
   | 'Reports'
   | 'Templates'
-  | 'Settings';
+  | 'Settings'
+  | 'Infrastructure';
 const navigation = [
   { label: 'Overview', icon: LayoutDashboard },
   { label: 'Invoices', icon: FileText },
@@ -110,8 +113,40 @@ export function Studio() {
   const [w, setW] = useState<Workspace>(emptyWorkspace);
   const [ready, setReady] = useState(false);
   const [mode, setMode] = useState<Mode>('local');
+  const [clientLinks, setClientLinks] = useState<LinkState>(emptyLinks);
+  const [clientLinkDocument, setClientLinkDocument] = useState<Invoice | null>(null);
+  const [linkBusy, setLinkBusy] = useState(false);
+  async function refreshClientLinks() {
+    const res = await fetch('/api/client-links', { cache: 'no-store' });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error);
+    setClientLinks(body);
+  }
+  useEffect(() => {
+    if (mode !== 'cloud') { setClientLinks(emptyLinks); setClientLinkDocument(null); return; }
+    void refreshClientLinks().catch(e => setNotice({ text: e.message, error: true }));
+  }, [mode]);
+  async function openClientLink(doc: Invoice) {
+    const existing = clientLinks.links.find(l => l.document_id === doc.id);
+    if (existing) { setClientLinkDocument(doc); return; }
+    const tab = window.open('about:blank', '_blank');
+    if (tab) tab.opener = null;
+    setLinkBusy(true);
+    try {
+      const result = await linkAction({ action: 'create', document: doc.id });
+      const res = await fetch('/api/client-links', { cache: 'no-store' });
+      const state: LinkState = await res.json();
+      if (!res.ok) throw new Error('Could not load client link.');
+      setClientLinks(state); setClientLinkDocument(doc);
+      const link = state.links.find(l => l.document_id === doc.id);
+      if (tab && link) tab.location.href = `/c/${link.raw_token}`;
+      if (result.warning) notify(result.warning, true);
+    } catch(e) { tab?.close(); notify(e instanceof Error ? e.message : 'Could not create link.', true); }
+    finally { setLinkBusy(false); }
+  }
   const [version, setVersion] = useState(0);
   const [user, setUser] = useState('');
+  const [role, setRole] = useState<'business_admin' | 'technical_admin' | null>(null);
   const [sharedToken, setSharedToken] = useState('');
   const [sharedLink, setSharedLink] = useState('');
   const [page, setPage] = useState<Page>('Overview');
@@ -121,8 +156,8 @@ export function Studio() {
   const [editor, setEditor] = useState<Invoice | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [recordForm, setRecordForm] = useState<RecordForm | null>(null);
-  const [authOpen, setAuthOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'reset' | 'update'>('signin');
+  const [authOpen, setAuthOpen] = useState(true);
+  const [authMode, setAuthMode] = useState<'signin' | 'reset' | 'update'>('signin');
   const [authError, setAuthError] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
   const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
@@ -135,6 +170,7 @@ export function Studio() {
   const [help, setHelp] = useState(false);
   const localSnapshot = useRef<string | null>(null);
   const localCorrupt = useRef(false);
+  const recoveryFlow = useRef(false);
   const selectedDoc = w.documents.find((d) => d.id === selected);
   const notify = (text: string, error = false) => setNotice({ text, error });
   useEffect(() => {
@@ -164,6 +200,7 @@ export function Studio() {
       }
     };
     if (params.has('recovery')) {
+      recoveryFlow.current = true;
       setAuthMode('update');
       setAuthOpen(true);
     } else if (params.has('confirmed')) {
@@ -191,7 +228,6 @@ export function Studio() {
           if (!res.ok) throw new Error(body.error);
           setW(workspaceSchema.parse(body.data));
           setVersion(body.version);
-          setUser('Anyone with the link');
         } catch (e) {
           notify(e instanceof Error ? e.message : 'Could not open the shared workspace.', true);
         } finally {
@@ -214,9 +250,44 @@ export function Studio() {
       if (event === 'PASSWORD_RECOVERY') {
         setAuthMode('update');
         setAuthOpen(true);
+      } else if (event === 'SIGNED_OUT') {
+        setRole(null);
+        setUser('');
+        setMode('local');
+        setAuthMode('signin');
+        setAuthError('Sign in with an authorized admin account to continue.');
+        setAuthOpen(true);
       }
     });
     return () => subscription.unsubscribe();
+  }, []);
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const response = await fetch('/api/auth/profile', { cache: 'no-store' });
+        const profile = await response.json();
+        if (!active) return;
+        if (!response.ok) {
+          setAuthOpen(true);
+          setAuthError(profile.error || 'Sign in with an authorized admin account to continue.');
+          return;
+        }
+        setRole(profile.role);
+        setUser(profile.email || '');
+        if (!recoveryFlow.current) {
+          setAuthOpen(false);
+          setAuthError('');
+        }
+      } catch {
+        if (!active) return;
+        setAuthOpen(true);
+        setAuthError('Could not verify the administrator account. Please retry.');
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
   useEffect(() => {
     if (!notice) return;
@@ -241,6 +312,7 @@ export function Studio() {
     setMobile(false);
   };
   async function commit(next: Workspace, replacing = false) {
+    let receiptWarning: string | undefined;
     if (savingRef.current) return false;
     const parsed = workspaceSchema.safeParse(next);
     if (!parsed.success) {
@@ -259,6 +331,8 @@ export function Studio() {
         const body = await res.json();
         if (!res.ok) throw new Error(body.error);
         setVersion(body.version);
+        receiptWarning = body.receiptWarning;
+        void refreshClientLinks().catch(() => {});
       } else if (mode === 'shared') {
         const res = await fetch('/api/shared-workspace', {
           method: 'PUT',
@@ -291,13 +365,13 @@ export function Studio() {
       }
       setW(parsed.data);
       notify(
-        mode === 'cloud'
+        receiptWarning || (mode === 'cloud'
           ? 'Saved to your cloud workspace.'
           : mode === 'shared'
             ? 'Saved to the shared workspace.'
             : mode === 'demo'
               ? 'Updated sample workspace.'
-              : 'Saved on this device.',
+              : 'Saved on this device.'),
       );
       return true;
     } catch (e) {
@@ -380,7 +454,6 @@ export function Studio() {
       setSharedToken(body.token);
       setSharedLink(url.href);
       setVersion(body.version);
-      setUser('Anyone with the link');
       setMode('shared');
       notify('Shared workspace created in Supabase. Copy the link to open it on other devices.');
     } catch (e) {
@@ -550,6 +623,7 @@ export function Studio() {
               <td>
                 <button className="table-link" onClick={() => setSelected(d.id)}>
                   {d.number}
+                  {mode === 'cloud' && clientLinks.links.some(l => l.document_id === d.id) && <small className="badge">Client link{clientLinks.links.find(l => l.document_id === d.id)?.unread ? ` · ${clientLinks.links.find(l => l.document_id === d.id)?.unread} unread` : ''}</small>}
                 </button>
                 <small>{d.client.name}</small>
               </td>
@@ -646,6 +720,17 @@ export function Studio() {
               )}
             </button>
           ))}
+          {role === 'technical_admin' && (
+            <button
+              title="Infrastructure"
+              aria-label="Infrastructure"
+              className={page === 'Infrastructure' && !editor ? 'active' : ''}
+              onClick={() => go('Infrastructure')}
+            >
+              <Server size={19} />
+              <span>Infrastructure</span>
+            </button>
+          )}
         </nav>
         <div className="sidebar-bottom">
           <div className="studio-note">
@@ -752,22 +837,23 @@ export function Studio() {
               <button className="button small" onClick={openLocal} disabled={!!editor || saving}>
                 Exit sample workspace
               </button>
-            ) : (
-              <button
-                className="icon-button"
-                aria-label="Sign out of cloud"
-                disabled={!!editor || saving}
-                onClick={async () => {
-                  const { error } = await createClient().auth.signOut();
-                  if (error) notify(error.message, true);
-                  else {
-                    setUser('');
-                    openLocal();
-                  }
-                }}
-              >
-                <LogOut size={18} />
-              </button>
+            ) : null}
+            {role && (
+              <div className="admin-account">
+                <span>{role === 'technical_admin' ? 'Technical admin' : 'Business admin'}</span>
+                <button
+                  className="icon-button"
+                  aria-label="Sign out"
+                  title={`Sign out ${user}`}
+                  disabled={!!editor || saving}
+                  onClick={async () => {
+                    const { error } = await createClient().auth.signOut();
+                    if (error) notify(error.message, true);
+                  }}
+                >
+                  <LogOut size={18} />
+                </button>
+              </div>
             )}
             <div className="avatar" title={user || 'ITZ workspace'}>
               IT
@@ -1569,6 +1655,9 @@ export function Studio() {
                 </div>
               </>
             )}
+            {page === 'Infrastructure' && role === 'technical_admin' && (
+              <InfrastructurePanel email={user} />
+            )}
             {page === 'Settings' && (
               <>
                 <SectionTitle
@@ -1806,6 +1895,10 @@ export function Studio() {
           }}
         >
           <div className="document-actions">
+            <span title={mode !== 'cloud' ? 'Connect your cloud workspace to share a client link.' : selectedDoc.status === 'draft' ? 'Issue this document before creating a client link.' : undefined}>
+              <button className="button" disabled={mode !== 'cloud' || selectedDoc.status === 'draft' || linkBusy} onClick={() => openClientLink(selectedDoc)}>Client link</button>
+              {(mode !== 'cloud' || selectedDoc.status === 'draft') && <small>{mode !== 'cloud' ? 'Cloud mode only' : 'Issue document first'}</small>}
+            </span>
             <span className={'badge ' + statusOf(selectedDoc)}>{statusOf(selectedDoc)}</span>
             <div className="actions">
               <button className="button" onClick={() => pdf(selectedDoc)}>
@@ -2060,18 +2153,21 @@ export function Studio() {
           </div>
         </Modal>
       )}
+      {clientLinkDocument && mode === 'cloud' && <ClientLinkDialog doc={clientLinkDocument} state={clientLinks} refresh={refreshClientLinks} onClose={() => setClientLinkDocument(null)} />}
       {authOpen && (
         <Modal
           title={
-            authMode === 'signup'
-              ? 'Create your cloud account'
-              : authMode === 'reset'
-                ? 'Reset your password'
-                : authMode === 'update'
-                  ? 'Choose a new password'
-                  : 'Open your cloud workspace'
+            authMode === 'reset'
+              ? 'Reset your password'
+              : authMode === 'update'
+                ? 'Choose a new password'
+                : 'Sign in to ITZ Studio'
           }
           onClose={() => {
+            if (!role) {
+              setAuthError('An authorized administrator sign-in is required.');
+              return;
+            }
             setAuthOpen(false);
             setAuthError('');
           }}
@@ -2098,19 +2194,21 @@ export function Studio() {
                   if (error) throw error;
                   setAuthMode('signin');
                   setAuthError('Password updated. Sign in to open your workspace.');
-                } else if (authMode === 'signup') {
-                  const { data, error } = await client.auth.signUp({
-                    email,
-                    password,
-                    options: { emailRedirectTo: window.location.origin + '/auth/callback' },
-                  });
-                  if (error) throw error;
-                  if (data.session) await openCloud();
-                  else setAuthError('Check your email to confirm your account, then sign in here.');
                 } else {
                   const { error } = await client.auth.signInWithPassword({ email, password });
                   if (error) throw error;
-                  await openCloud();
+                  const response = await fetch('/api/auth/profile', { cache: 'no-store' });
+                  const profile = await response.json();
+                  if (!response.ok) {
+                    await client.auth.signOut();
+                    throw new Error(profile.error || 'This account is not authorized.');
+                  }
+                  setRole(profile.role);
+                  setUser(profile.email || email);
+                  setAuthOpen(false);
+                  setAuthError('');
+                  setReady(true);
+                  notify(`Signed in as ${profile.displayName}.`);
                 }
               } catch (e) {
                 setAuthError(e instanceof Error ? e.message : 'Authentication failed.');
@@ -2123,8 +2221,8 @@ export function Studio() {
               <Cloud size={28} />
             </div>
             <p className="muted">
-              A private workspace for your business, available across your devices. Local records
-              stay separate; use backup and restore to transfer them.
+              Sign in with an administrator account. Only the business and technical admin accounts
+              configured for this app can continue.
             </p>
             {authMode !== 'update' && (
               <Field label="Email address">
@@ -2152,23 +2250,11 @@ export function Studio() {
                 ? 'Please wait…'
                 : authMode === 'signin'
                   ? 'Sign in'
-                  : authMode === 'signup'
-                    ? 'Create account'
-                    : authMode === 'reset'
-                      ? 'Send reset link'
-                      : 'Update password'}
+                  : authMode === 'reset'
+                    ? 'Send reset link'
+                    : 'Update password'}
             </button>
             <div className="auth-links">
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => {
-                  setAuthMode(authMode === 'signup' ? 'signin' : 'signup');
-                  setAuthError('');
-                }}
-              >
-                {authMode === 'signup' ? 'Already registered? Sign in' : 'Create an account'}
-              </button>
               <button
                 type="button"
                 className="text-button"
@@ -2224,6 +2310,154 @@ export function Studio() {
     </div>
   );
 }
+type InfrastructureSnapshot = {
+  deployment: {
+    environment: string;
+    url: string;
+    region: string;
+    commit: string;
+    runtime: string;
+  };
+  services: {
+    supabaseAuth: string;
+    workspaceDatabase: string;
+    workspaceDatabaseDetail: string;
+  };
+};
+
+function InfrastructurePanel({ email }: { email: string }) {
+  const [snapshot, setSnapshot] = useState<InfrastructureSnapshot | null>(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError('');
+    setSnapshot(null);
+    void (async () => {
+      try {
+        const response = await fetch('/api/admin/infrastructure', { cache: 'no-store' });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || 'Could not load infrastructure status.');
+        if (active) setSnapshot(body);
+      } catch (reason) {
+        if (active)
+          setError(
+            reason instanceof Error ? reason.message : 'Could not load infrastructure status.',
+          );
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [refreshKey]);
+
+  return (
+    <>
+      <SectionTitle
+        eyebrow="TECHNICAL ADMIN"
+        title="Running infrastructure"
+        description="Live deployment metadata and a server-side check of the Supabase workspace service."
+        actions={
+          <button
+            className="button"
+            disabled={loading}
+            onClick={() => setRefreshKey((key) => key + 1)}
+          >
+            {loading ? 'Checking…' : 'Refresh status'}
+          </button>
+        }
+      />
+      {error && (
+        <p className="error infrastructure-error" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="infrastructure-grid">
+        <section className="panel infrastructure-card">
+          <div className="panel-heading">
+            <div>
+              <h2>Vercel deployment</h2>
+              <p>Server-reported deployment and runtime metadata</p>
+            </div>
+            <Server size={22} className="blue-icon" />
+          </div>
+          <dl>
+            <div>
+              <dt>Environment</dt>
+              <dd>{snapshot?.deployment.environment || (loading ? 'Checking…' : 'Unknown')}</dd>
+            </div>
+            <div>
+              <dt>Deployment URL</dt>
+              <dd>{snapshot?.deployment.url || 'Not reported'}</dd>
+            </div>
+            <div>
+              <dt>Region</dt>
+              <dd>{snapshot?.deployment.region || 'Not reported'}</dd>
+            </div>
+            <div>
+              <dt>Commit</dt>
+              <dd>{snapshot?.deployment.commit || 'Not reported'}</dd>
+            </div>
+            <div>
+              <dt>Runtime</dt>
+              <dd>{snapshot?.deployment.runtime || 'Not reported'}</dd>
+            </div>
+            <div>
+              <dt>Signed in as</dt>
+              <dd>{email}</dd>
+            </div>
+          </dl>
+        </section>
+        <section className="panel infrastructure-card">
+          <div className="panel-heading">
+            <div>
+              <h2>Service health</h2>
+              <p>Checks are run from an authenticated server request</p>
+            </div>
+            <ShieldCheck size={22} className="blue-icon" />
+          </div>
+          <dl>
+            <div>
+              <dt>Supabase Auth</dt>
+              <dd>
+                <span className="service-status healthy">
+                  {snapshot?.services.supabaseAuth || (loading ? 'Checking…' : 'Unknown')}
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt>Workspace database</dt>
+              <dd
+                className={
+                  snapshot?.services.workspaceDatabase === 'Connected'
+                    ? 'service-status healthy'
+                    : snapshot
+                      ? 'service-status degraded'
+                      : ''
+                }
+              >
+                {snapshot?.services.workspaceDatabase || (loading ? 'Checking…' : 'Unknown')}
+              </dd>
+            </div>
+          </dl>
+          <p className="infrastructure-detail">
+            {snapshot?.services.workspaceDatabaseDetail || 'No database check has completed yet.'}
+          </p>
+        </section>
+      </div>
+      <p className="infrastructure-footnote">
+        Only non-secret platform metadata is displayed here. Keys, environment variable values,
+        customer records and server internals are not exposed.
+      </p>
+    </>
+  );
+}
+
 function CashChart({ workspace, currency }: { workspace: Workspace; currency: Currency }) {
   const base = new Date(today() + 'T12:00:00Z');
   const months = Array.from({ length: 6 }, (_, i) => {

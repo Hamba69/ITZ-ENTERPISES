@@ -1,0 +1,415 @@
+.client-page {
+  background-color: var(--navy-deep);
+  background-image:
+    linear-gradient(#ffffff05 1px, transparent 1px),
+    linear-gradient(90deg, #ffffff05 1px, transparent 1px);
+  background-size: 28px 28px;
+  color: #e9f0f5;
+  min-height: 100vh;
+  padding: 24px 16px;
+  font-family: 'Work Sans', sans-serif;
+  overflow-wrap: anywhere;
+}
+.client-page * {
+  box-sizing: border-box;
+}
+.client-page .cp-shell {
+  max-width: 1080px;
+  margin: auto;
+  position: relative;
+}
+.client-page .cp-shell:before,
+.client-page .cp-shell:after {
+  content: '+';
+  position: absolute;
+  color: #a8bbcc;
+  top: 56px;
+  font-size: 25px;
+}
+.client-page .cp-shell:before {
+  left: -12px;
+}
+.client-page .cp-shell:after {
+  right: -12px;
+}
+.client-page .cp-summary h1,
+.client-page .cp-section > h2,
+.client-page .cp-wordmark,
+.client-page .cp-total {
+  font-family: 'Orbitron', sans-serif;
+}
+.client-page .cp-summary h1 {
+  font-size: clamp(25px, 4vw, 42px);
+  line-height: 1.25;
+  margin: 12px 0 20px;
+}
+.client-page .cp-section > h2 {
+  font-size: 22px;
+  margin: 8px 0 20px;
+}
+.client-page .cp-receipt h3 {
+  font-size: 16px;
+}
+.client-page p:not(.document p) {
+  line-height: 1.6;
+}
+.client-page small:not(.document small),
+.client-page .cp-kicker {
+  color: #b8cad9;
+  font-size: 11px;
+  letter-spacing: 0.09em;
+}
+.client-page .cp-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  padding: 4px 0 30px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+}
+.client-page .cp-wordmark {
+  font-size: 22px;
+}
+.client-page .cp-wordmark span {
+  display: block;
+  font:
+    10px 'Work Sans',
+    sans-serif;
+  letter-spacing: 0.2em;
+}
+.client-page .cp-titleblock {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid #ffffff40;
+}
+.client-page .cp-titleblock > div {
+  padding: 14px;
+  border: 1px solid #ffffff20;
+  min-width: 0;
+}
+.client-page .cp-titleblock strong {
+  display: block;
+  font-size: 12px;
+  margin-top: 6px;
+}
+.client-page .cp-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 38px 0 24px;
+}
+.client-page .cp-total {
+  color: #f5a268;
+  font-size: clamp(24px, 4vw, 38px);
+  margin: 8px 0;
+}
+.client-page .cp-stamp {
+  display: inline-block;
+  border: 1px solid #f5a268;
+  padding: 8px 12px;
+  color: #f5a268;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+.client-page button,
+.client-page .cp-actions a {
+  border: 1px solid #859bb0;
+  background: transparent;
+  color: #f1f6fa;
+  border-radius: 3px;
+  padding: 12px 18px;
+  min-height: 44px;
+  font:
+    600 14px 'Work Sans',
+    sans-serif;
+  cursor: pointer;
+}
+.client-page button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.client-page button.cp-primary {
+  background: var(--orange);
+  color: #0b223b;
+  border-color: var(--orange);
+}
+.client-page :focus-visible {
+  outline: 3px solid #f5a268;
+  outline-offset: 4px;
+}
+.client-page .cp-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 20px 0;
+}
+.client-page .cp-sheet {
+  background: #fff;
+  color: #172d43;
+  padding: 0;
+  margin: 28px 0;
+  box-shadow: 0 20px 60px #0003;
+}
+.client-page .cp-sheet .document {
+  width: 100%;
+  max-width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 24px 16px;
+  box-shadow: none;
+}
+/* Public delivery needs AA body contrast without changing the studio templates. */
+@media screen {
+  .client-page .document p,
+  .client-page .document small,
+  .client-page .document-topline,
+  .client-page .document-id > strong,
+  .client-page .document-parties,
+  .client-page .document-footer {
+    color: #526575;
+  }
+}
+.client-page .document table {
+  width: 100%;
+  table-layout: fixed;
+}
+.client-page .document td,
+.client-page .document th {
+  overflow-wrap: anywhere;
+}
+.client-page .document-header,
+.client-page .document-parties,
+.client-page .document-bottom {
+  gap: 16px;
+}
+.client-page .document-header > * {
+  min-width: 0;
+}
+.client-page .document .document-title {
+  min-width: 0;
+}
+.client-page .cp-section {
+  border-top: 1px solid #ffffff30;
+  padding: 32px 0;
+  margin-top: 26px;
+  animation: cp-enter 0.5s ease both;
+}
+.client-page .cp-receipts {
+  display: grid;
+  gap: 16px;
+}
+.client-page .cp-receipt {
+  padding: 22px;
+  background: #ffffff07;
+  border: 1px solid #ffffff30;
+}
+.client-page .cp-superseded {
+  border-left: 3px solid #b8cad9;
+  padding-left: 12px;
+}
+.client-page .cp-gallery {
+  columns: 2;
+  column-gap: 12px;
+}
+.client-page .cp-gallery button {
+  padding: 0;
+  position: relative;
+  width: 100%;
+  break-inside: avoid;
+  margin-bottom: 12px;
+  text-align: left;
+  overflow: hidden;
+}
+.client-page .cp-gallery button.cp-hero {
+  column-span: all;
+  display: block;
+}
+.client-page .cp-gallery img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.client-page .cp-gallery button span {
+  display: block;
+  padding: 10px;
+}
+.client-page .cp-gallery .cp-play {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  background: #0b223be6;
+}
+.client-page .cp-lightbox {
+  background: #0b223b;
+  color: #fff;
+  width: min(94vw, 1000px);
+  max-height: 94vh;
+  border: 1px solid #b8cad9;
+  padding: 20px;
+}
+.client-page .cp-lightbox::backdrop {
+  background: #000c;
+}
+.client-page .cp-lightbox img,
+.client-page .cp-lightbox video {
+  display: block;
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  max-height: 60vh;
+  margin: 20px auto;
+  object-fit: contain;
+}
+.client-page .cp-comments {
+  list-style: none;
+  padding: 0;
+}
+.client-page .cp-comments li {
+  padding: 20px 0;
+  border-bottom: 1px solid #ffffff20;
+}
+.client-page .cp-comments time {
+  display: block;
+  font-size: 12px;
+  color: #b8cad9;
+  margin-top: 5px;
+}
+.client-page .cp-comments p {
+  white-space: pre-wrap;
+}
+.client-page form {
+  max-width: 640px;
+}
+.client-page label {
+  display: block;
+  margin: 18px 0;
+  font-size: 14px;
+}
+.client-page input,
+.client-page textarea {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid #859bb0;
+  border-radius: 3px;
+  background: #fff;
+  color: #0b223b;
+  padding: 12px;
+  font:
+    16px 'Work Sans',
+    sans-serif;
+}
+.client-page .cp-honeypot {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.client-page footer {
+  border-top: 1px solid #ffffff40;
+  padding: 28px 0;
+  color: #b8cad9;
+  font-size: 13px;
+}
+.client-page footer a {
+  color: #e9f0f5;
+  display: inline-block;
+  margin: 6px 24px 6px 0;
+}
+.client-page [role='alert'] {
+  padding: 16px;
+  border: 1px solid #f5a268;
+}
+@keyframes cp-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (min-width: 700px) {
+  .client-page {
+    padding: 40px;
+  }
+  .client-page .cp-titleblock {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  .client-page .cp-sheet .document {
+    padding: 48px;
+  }
+  .client-page .cp-receipts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .client-page .cp-gallery {
+    columns: 3;
+  }
+}
+@media (max-width: 600px) {
+  .client-page .document-header,
+  .client-page .document-parties,
+  .client-page .document-bottom {
+    display: flex;
+    flex-direction: column;
+  }
+  .client-page .document-heading {
+    text-align: left;
+  }
+  .client-page .document {
+    font-size: 10px;
+  }
+  .client-page .document th,
+  .client-page .document td {
+    padding: 6px 3px;
+  }
+  .client-page .document-header h1 {
+    font-size: 24px;
+  }
+  .client-page .document-totals {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .client-page .cp-section {
+    animation: none;
+  }
+}
+@media print {
+  .client-page {
+    visibility: visible !important;
+    background: white !important;
+    color: black !important;
+    padding: 0 !important;
+  }
+  .client-page .cp-shell {
+    max-width: none;
+  }
+  .client-page .cp-shell > *:not(.cp-sheet) {
+    display: none !important;
+  }
+  .client-page .cp-shell:before,
+  .client-page .cp-shell:after {
+    display: none;
+  }
+  .client-page .cp-sheet,
+  .client-page .cp-sheet * {
+    visibility: visible !important;
+  }
+  .client-page .cp-sheet {
+    margin: 0;
+    box-shadow: none;
+  }
+  .client-page .cp-sheet .document {
+    padding: 0 !important;
+    font-size: 9pt !important;
+    width: 100% !important;
+  }
+}
