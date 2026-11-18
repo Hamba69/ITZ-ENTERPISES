@@ -49,7 +49,7 @@ do $$ declare t text; begin
   execute format('alter table public.%I enable row level security',t);
   execute format('revoke all on public.%I from public, anon, authenticated',t);
   execute format('grant select on public.%I to authenticated',t);
-  execute format('create policy owner_access on public.%I for all to authenticated using ((select auth.uid())=owner_id) with check ((select auth.uid())=owner_id)',t);
+  execute format('create policy owner_access on public.%I for all to authenticated using ((select public.itz_workspace_owner_id())=owner_id) with check ((select public.itz_workspace_owner_id())=owner_id)',t);
  end loop;
 end $$;
 grant insert,update,delete on public.itz_galleries,public.itz_gallery_media to authenticated;
@@ -59,32 +59,32 @@ create function public.itz_manage_client_link(p_document text,p_action text,p_ha
 returns uuid language plpgsql security definer set search_path='' as $$
 declare d jsonb; l uuid; begin
  if auth.uid() is null then raise exception 'Authentication required'; end if;
- select x into d from public.itz_workspaces w, lateral jsonb_array_elements(w.data->'documents') x where w.owner_id=auth.uid() and x->>'id'=p_document;
+ select x into d from public.itz_workspaces w, lateral jsonb_array_elements(w.data->'documents') x where w.owner_id=public.itz_workspace_owner_id() and x->>'id'=p_document;
  if d is null or d->>'status'='draft' then raise exception 'Issued document required'; end if;
  if p_action in ('create','regenerate') then
   if p_hash is null or p_hash !~ '^[0-9a-f]{64}$' or p_token is null or p_token !~ '^[A-Za-z0-9_-]{43}$' then raise exception 'Invalid token'; end if;
   if p_action='create' then
-   insert into public.itz_client_links(owner_id,document_id,token_hash,raw_token) values(auth.uid(),p_document,p_hash,p_token)
+   insert into public.itz_client_links(owner_id,document_id,token_hash,raw_token) values(public.itz_workspace_owner_id(),p_document,p_hash,p_token)
    on conflict(owner_id,document_id) do nothing;
-  else update public.itz_client_links set token_hash=p_hash,raw_token=p_token,revoked_at=null where owner_id=auth.uid() and document_id=p_document;
+  else update public.itz_client_links set token_hash=p_hash,raw_token=p_token,revoked_at=null where owner_id=public.itz_workspace_owner_id() and document_id=p_document;
   end if;
- elsif p_action='revoke' then update public.itz_client_links set revoked_at=now() where owner_id=auth.uid() and document_id=p_document;
- elsif p_action='settings' then update public.itz_client_links set expires_at=p_expiry,gallery_id=p_gallery where owner_id=auth.uid() and document_id=p_document;
+ elsif p_action='revoke' then update public.itz_client_links set revoked_at=now() where owner_id=public.itz_workspace_owner_id() and document_id=p_document;
+ elsif p_action='settings' then update public.itz_client_links set expires_at=p_expiry,gallery_id=p_gallery where owner_id=public.itz_workspace_owner_id() and document_id=p_document;
  else raise exception 'Invalid action'; end if;
- select id into l from public.itz_client_links where owner_id=auth.uid() and document_id=p_document;
+ select id into l from public.itz_client_links where owner_id=public.itz_workspace_owner_id() and document_id=p_document;
  return l;
 end $$;
 
 create function public.itz_sync_receipts(p_link uuid,p_version bigint,p_changes jsonb)
 returns void language plpgsql security definer set search_path='' as $$
 declare l public.itz_client_links; v bigint; a jsonb; begin
- select version into v from public.itz_workspaces where owner_id=auth.uid() for update;
+ select version into v from public.itz_workspaces where owner_id=public.itz_workspace_owner_id() for update;
  if v is distinct from p_version then raise exception 'Receipt version conflict'; end if;
- select * into l from public.itz_client_links where id=p_link and owner_id=auth.uid() for update;
+ select * into l from public.itz_client_links where id=p_link and owner_id=public.itz_workspace_owner_id() for update;
  if l.id is null then raise exception 'Link unavailable'; end if;
  update public.itz_receipts set superseded=true where link_id=l.id and id::text in (select jsonb_array_elements_text(p_changes->'supersede'));
  for a in select jsonb_array_elements(p_changes->'additions') loop
-  insert into public.itz_receipts(owner_id,link_id,sequence,payment_id,snapshot) values(auth.uid(),l.id,(a->>'sequence')::integer,a->>'payment_id',a->'snapshot');
+  insert into public.itz_receipts(owner_id,link_id,sequence,payment_id,snapshot) values(public.itz_workspace_owner_id(),l.id,(a->>'sequence')::integer,a->>'payment_id',a->'snapshot');
  end loop;
 end $$;
 
@@ -118,7 +118,7 @@ end $$;
 create function public.itz_reply_client(p_link uuid,p_message text) returns void
 language plpgsql security definer set search_path='' as $$
 declare l public.itz_client_links; begin
- select * into l from public.itz_client_links where id=p_link and owner_id=auth.uid() for update;
+ select * into l from public.itz_client_links where id=p_link and owner_id=public.itz_workspace_owner_id() for update;
  if l.id is null then raise exception 'Link unavailable'; end if;
  if (select count(*) from public.itz_client_comments where link_id=l.id)>=200 then raise exception 'Comment limit reached'; end if;
  insert into public.itz_client_comments(owner_id,link_id,name,message,staff,read_at) values(l.owner_id,l.id,'ITZ Engineering',trim(p_message),true,now());
@@ -154,7 +154,7 @@ grant execute on function public.itz_get_client_page(text),public.itz_add_client
 
 -- STORAGE SECTION: tested manually on hosted Supabase (PGlite has no Storage service).
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types) values('itz-project-media','itz-project-media',false,30000000,array['image/jpeg','image/webp','video/mp4','video/webm','video/quicktime']);
-create policy itz_media_owner_select on storage.objects for select to authenticated using(bucket_id='itz-project-media' and (storage.foldername(name))[1]=(select auth.uid())::text);
-create policy itz_media_owner_insert on storage.objects for insert to authenticated with check(bucket_id='itz-project-media' and (storage.foldername(name))[1]=(select auth.uid())::text and exists(select 1 from public.itz_gallery_media m where m.owner_id=(select auth.uid()) and (m.path=name or m.poster_path=name) and not m.ready));
-create policy itz_media_owner_delete on storage.objects for delete to authenticated using(bucket_id='itz-project-media' and (storage.foldername(name))[1]=(select auth.uid())::text);
+create policy itz_media_owner_select on storage.objects for select to authenticated using(bucket_id='itz-project-media' and (storage.foldername(name))[1]=(select public.itz_workspace_owner_id())::text);
+create policy itz_media_owner_insert on storage.objects for insert to authenticated with check(bucket_id='itz-project-media' and (storage.foldername(name))[1]=(select public.itz_workspace_owner_id())::text and exists(select 1 from public.itz_gallery_media m where m.owner_id=(select public.itz_workspace_owner_id()) and (m.path=name or m.poster_path=name) and not m.ready));
+create policy itz_media_owner_delete on storage.objects for delete to authenticated using(bucket_id='itz-project-media' and (storage.foldername(name))[1]=(select public.itz_workspace_owner_id())::text);
 create policy itz_media_client_select on storage.objects for select to anon using(bucket_id='itz-project-media' and public.itz_can_read_media(name));

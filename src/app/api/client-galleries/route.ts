@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     if (b.action === 'create' && b.title) {
       const { data, error } = await a.client
         .from('itz_galleries')
-        .insert({ owner_id: a.user.id, title: b.title })
+        .insert({ owner_id: a.workspaceOwnerId, title: b.title })
         .select('id')
         .single();
       if (error) throw error;
@@ -41,14 +41,16 @@ export async function POST(request: NextRequest) {
     ) {
       if ((b.kind === 'image') !== ['jpg', 'webp'].includes(b.extension)) throw new Error();
       const id = crypto.randomUUID(),
-        path = `${a.user.id}/${b.gallery}/${id}.${b.extension}`;
+        path = `${a.workspaceOwnerId}/${b.gallery}/${id}.${b.extension}`;
       const poster_path =
-        b.kind === 'video' ? `${a.user.id}/${b.gallery}/${crypto.randomUUID()}.jpg` : null;
+        b.kind === 'video'
+          ? `${a.workspaceOwnerId}/${b.gallery}/${crypto.randomUUID()}.jpg`
+          : null;
       const { error } = await a.client
         .from('itz_gallery_media')
         .insert({
           id,
-          owner_id: a.user.id,
+          owner_id: a.workspaceOwnerId,
           gallery_id: b.gallery,
           kind: b.kind,
           path,

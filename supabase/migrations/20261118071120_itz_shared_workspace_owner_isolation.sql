@@ -5,7 +5,7 @@ create or replace function public.itz_create_shared_workspace(p_token_hash text,
 returns bigint language plpgsql security definer set search_path = '' as $$
 declare
   created_version bigint;
-  workspace_owner uuid := auth.uid();
+  workspace_owner uuid := public.itz_workspace_owner_id();
 begin
   if workspace_owner is null then
     raise exception 'Authentication required' using errcode = '42501';
@@ -33,7 +33,7 @@ language sql stable security definer set search_path = '' as $$
   select workspace.data, workspace.version
   from public.itz_shared_workspaces as workspace
   where workspace.token_hash = p_token_hash
-    and workspace.owner_id = auth.uid()
+    and workspace.owner_id = public.itz_workspace_owner_id()
 $$;
 
 create or replace function public.itz_save_shared_workspace(
@@ -44,7 +44,7 @@ create or replace function public.itz_save_shared_workspace(
 returns bigint language plpgsql security definer set search_path = '' as $$
 declare
   next_version bigint;
-  workspace_owner uuid := auth.uid();
+  workspace_owner uuid := public.itz_workspace_owner_id();
 begin
   if workspace_owner is null then
     raise exception 'Authentication required' using errcode = '42501';
